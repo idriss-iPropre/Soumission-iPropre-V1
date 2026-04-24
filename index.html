@@ -231,7 +231,34 @@
     .prices-grid > *:first-child { padding: 14px 16px !important; }
 
     .page-head h1 { font-size: 28px; }
-    .actionbar { flex-wrap: wrap; }
+
+    /* Compact action bar on mobile — 2 rows, full width buttons */
+    .actionbar {
+      padding: 10px 12px !important;
+      gap: 8px !important;
+      flex-wrap: wrap;
+      bottom: 10px !important;
+      border-radius: 14px !important;
+    }
+    .actionbar .total-box {
+      flex: 1;
+      min-width: 0;
+      padding-right: 10px !important;
+      gap: 6px !important;
+    }
+    .actionbar .total-box:last-of-type { border-right: none !important; padding-right: 0 !important; }
+    .actionbar .total-box .k { font-size: 9px !important; letter-spacing: 0.1em !important; }
+    .actionbar .total-box .v { font-size: 15px !important; line-height: 1.1; }
+    /* Force row break between info boxes and buttons */
+    .actionbar .spacer { display: block; flex-basis: 100%; height: 0; margin: 0; padding: 0; }
+    .actionbar .btn {
+      flex: 1 1 calc(50% - 4px);
+      justify-content: center;
+      padding: 9px 10px !important;
+      font-size: 12.5px !important;
+      min-height: 38px;
+    }
+    .actionbar .btn svg { width: 13px; height: 13px; }
 
     /* Envoi page: single column, summary goes below form */
     .envoi-grid { grid-template-columns: 1fr !important; }
