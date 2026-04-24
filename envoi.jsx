@@ -1,6 +1,6 @@
 // Envoi — email sending step with PDF generation (opens a dedicated print window)
 
-function EnvoiPage({ state, pushToast }) {
+function EnvoiPage({ state, pushToast, onLogout }) {
   const [form, setForm] = React.useState({
     clientName: '',
     company: '',
@@ -237,6 +237,12 @@ function EnvoiPage({ state, pushToast }) {
           <h1>Envoyer la soumission.</h1>
           <p className="sub">Saisissez les coordonnées du client. Un PDF est généré avec tout le détail et votre application courriel s'ouvre pré-remplie.</p>
         </div>
+        {onLogout && (
+          <button type="button" className="btn btn-light" onClick={onLogout} title="Se déconnecter" style={{ alignSelf: 'flex-start' }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            Se déconnecter
+          </button>
+        )}
       </div>
 
       <div className="envoi-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 340px', gap: 20 }}>

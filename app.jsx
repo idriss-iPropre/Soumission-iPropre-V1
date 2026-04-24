@@ -18,6 +18,7 @@ function App() {
   const [tab, setTab] = React.useState('presentation');
   const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
   const [toastFn, toastUI] = useToasts();
+  const { authed, login, logout } = useAuth();
 
   const initialState = {
     sections: JSON.parse(JSON.stringify(DEFAULT_SECTIONS)),
@@ -126,7 +127,10 @@ function App() {
         {tab === 'soumission' && <SoumissionPage state={state} setState={setState} pushToast={toastFn} history={history} undo={undo} future={future} redo={redo} />}
         {tab === 'galerie' && <GaleriePage />}
         {tab === 'annexes' && <AnnexesPage />}
-        {tab === 'envoi' && <EnvoiPage state={state} pushToast={toastFn} />}
+        {tab === 'envoi' && (authed
+          ? <EnvoiPage state={state} pushToast={toastFn} onLogout={() => { logout(); toastFn('Déconnecté'); }} />
+          : <LoginGate onSuccess={(remember) => { login(remember); toastFn('Connexion réussie'); }} />
+        )}
 
         {/* Sticky action bar (always visible) */}
         <div className="actionbar">
