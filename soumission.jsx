@@ -208,7 +208,7 @@ function SoumissionPage({ state, setState, pushToast, history, undo, future, red
 
       {/* Plan header card */}
       <div className="card" style={{ marginBottom: 20, overflow: 'hidden' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(240px, 1.6fr) repeat(3, 1fr)' }}>
+        <div className="plan-header-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(240px, 1.6fr) repeat(3, 1fr)' }}>
           <div style={{ padding: '22px 24px', borderRight: '1px solid var(--ip-line)' }}>
             <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.14em', color: 'var(--ip-muted)', marginBottom: 6 }}>Nos tarifs</div>
             <div style={{ fontFamily: 'var(--font-serif)', fontSize: 24, fontWeight: 700 }}>Plans de service</div>
@@ -305,7 +305,7 @@ function SoumissionPage({ state, setState, pushToast, history, undo, future, red
                     />
                   </td>
                   {PLAN_DEFS.map((p, pi) => (
-                    <td key={p.key}>
+                    <td key={p.key} data-plan={p.label}>
                       <SmartSelect
                         value={row.v[pi]}
                         onChange={(val) => updateRowValue(secIdx, rowIdx, pi, val)}
@@ -314,15 +314,15 @@ function SoumissionPage({ state, setState, pushToast, history, undo, future, red
                       />
                     </td>
                   ))}
-                  <td>
+                  <td className="row-delete">
                     <button className="btn-icon danger" title="Supprimer la ligne" onClick={() => removeRow(secIdx, rowIdx)}>
                       <Icon.trash />
                     </button>
                   </td>
                 </tr>
               ))}
-              <tr>
-                <td colSpan={5} style={{ padding: '10px 14px', borderBottom: 'none' }}>
+              <tr className="add-line-row">
+                <td colSpan={5} className="add-line" style={{ padding: '10px 14px', borderBottom: 'none' }}>
                   <button className="btn btn-ghost" onClick={() => addRow(secIdx)} style={{ padding: '7px 12px', fontSize: 12.5 }}>
                     <Icon.plus size={12} /> Ajouter une ligne
                   </button>
@@ -336,7 +336,7 @@ function SoumissionPage({ state, setState, pushToast, history, undo, future, red
 
       {/* Prices row */}
       <div className="card" style={{ marginTop: 20, marginBottom: 20, overflow: 'hidden' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(240px, 1.6fr) repeat(3, 1fr)' }}>
+        <div className="prices-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(240px, 1.6fr) repeat(3, 1fr)' }}>
           <div style={{ padding: '18px 24px', background: 'var(--ip-ink)', color: '#fff', display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ fontFamily: 'var(--font-serif)', fontSize: 22, fontWeight: 700 }}>Prix</div>
             <div style={{ fontSize: 12, color: '#a9a9b0' }}>par mois, taxes en sus</div>
@@ -366,7 +366,7 @@ function SoumissionPage({ state, setState, pushToast, history, undo, future, red
         </div>
 
         {/* Plan-choice checkbox row */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(240px, 1.6fr) repeat(3, 1fr)', borderTop: '1px solid var(--ip-line)' }}>
+        <div className="choice-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(240px, 1.6fr) repeat(3, 1fr)', borderTop: '1px solid var(--ip-line)' }}>
           <div style={{ padding: '14px 24px', background: '#fafaf6', display: 'flex', alignItems: 'center', gap: 10, borderRight: '1px solid var(--ip-line)' }}>
             <Icon.check size={14} />
             <div>
