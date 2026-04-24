@@ -188,16 +188,38 @@
     .page-head h1 { font-size: 32px; }
   }
 
-  /* ---------- Mobile: soumission table → stacked cards ---------- */
+  /* ---------- Mobile: keep table form, tighten plan columns ---------- */
   @media (max-width: 720px) {
     .topbar .client-badge { display: none; }
     .brand .tag { display: none; }
 
-    /* Plan header card : stack vertically */
+    /* Table: give Prestation more breathing room, compact plan cols */
+    .stable { table-layout: fixed; }
+    .stable thead th,
+    .stable tbody td { padding: 10px 6px !important; }
+    .stable thead th:first-child,
+    .stable tbody td:first-child { padding: 12px 8px !important; width: 44% !important; }
+    .stable tbody td:first-child .txt-input {
+      font-size: 13.5px !important;
+      font-weight: 600;
+      white-space: normal;
+      padding: 6px 4px !important;
+      line-height: 1.35;
+    }
+    .stable tbody td:first-child .txt-input::placeholder { font-size: 12.5px; }
+    /* Compact plan selects */
+    .sel { padding: 7px 22px 7px 8px !important; font-size: 12px !important; background-position: right 6px center !important; }
+    .stable thead th:nth-child(2),
+    .stable thead th:nth-child(3),
+    .stable thead th:nth-child(4) { font-size: 10px !important; }
+    .stable thead th:last-child,
+    .stable tbody td:last-child { width: 28px !important; padding: 4px 2px !important; }
+
+    /* Plan header & prices: stack header, keep 3 cols */
     .plan-header-grid,
     .prices-grid,
     .choice-grid {
-      grid-template-columns: 1fr repeat(3, 1fr) !important;
+      grid-template-columns: repeat(3, 1fr) !important;
     }
     .plan-header-grid > *:first-child,
     .prices-grid > *:first-child,
@@ -206,47 +228,16 @@
       border-right: none !important;
       border-bottom: 1px solid var(--ip-line);
     }
-    .prices-grid > *:first-child { padding: 14px 18px !important; }
-
-    /* Soumission table stacks as cards */
-    .stable { display: block; }
-    .stable thead { display: none; }
-    .stable tbody { display: block; }
-    .stable tbody tr { display: block; border: 1px solid var(--ip-line); border-radius: 12px; margin-bottom: 12px; padding: 12px; background: #fff; }
-    .stable tbody tr:hover { background: #fff; }
-    .stable tbody td { display: block; padding: 6px 0 !important; border: none !important; }
-    .stable tbody td:first-child {
-      padding-bottom: 10px !important;
-      margin-bottom: 8px;
-      border-bottom: 1px dashed var(--ip-line-2) !important;
-    }
-    .stable tbody td:first-child .txt-input {
-      font-size: 16px !important;
-      font-weight: 600 !important;
-      padding: 4px 0 !important;
-    }
-    /* Label each plan cell on mobile */
-    .stable tbody td[data-plan]::before {
-      content: attr(data-plan);
-      display: block;
-      font-family: var(--font-mono);
-      font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.12em;
-      color: var(--ip-muted);
-      margin-bottom: 4px;
-    }
-    /* Delete row button inline at bottom */
-    .stable tbody td.row-delete {
-      text-align: right;
-      padding-top: 10px !important;
-      margin-top: 6px;
-      border-top: 1px dashed var(--ip-line-2) !important;
-    }
-    /* "Add line" td keeps inline */
-    .stable tbody td.add-line { padding: 6px 0 0 0 !important; }
-    .stable tbody tr.add-line-row { border: none; padding: 0; margin-bottom: 0; background: transparent; }
+    .prices-grid > *:first-child { padding: 14px 16px !important; }
 
     .page-head h1 { font-size: 28px; }
     .actionbar { flex-wrap: wrap; }
+
+    /* Envoi page: single column, summary goes below form */
+    .envoi-grid { grid-template-columns: 1fr !important; }
+    .envoi-grid aside { position: static !important; }
+    .envoi-grid .two-col { grid-template-columns: 1fr !important; }
+    .card-pad { padding: 18px !important; }
   }
 </style>
 </head>

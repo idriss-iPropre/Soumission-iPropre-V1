@@ -287,21 +287,21 @@ function SoumissionPage({ state, setState, pushToast, history, undo, future, red
           {!isClosed && <table className="stable">
             <thead>
               <tr>
-                <th style={{ width: '38%' }}>Prestation</th>
-                {PLAN_DEFS.map(p => <th key={p.key} style={{ width: '18%' }}>{p.label}</th>)}
-                <th style={{ width: 40 }}></th>
+                <th style={{ width: '44%' }}>Prestation</th>
+                {PLAN_DEFS.map(p => <th key={p.key} style={{ width: '16%' }}>{p.label}</th>)}
+                <th style={{ width: 36 }}></th>
               </tr>
             </thead>
             <tbody>
               {sec.rows.map((row, rowIdx) => (
                 <tr key={rowIdx}>
-                  <td>
+                  <td style={{ paddingRight: 18 }}>
                     <input
                       className="txt-input"
                       value={row.label}
                       placeholder="Nom de la prestation…"
                       onChange={(e) => updateRowLabel(secIdx, rowIdx, e.target.value)}
-                      style={{ border: 'none', background: 'transparent', padding: '4px 6px', fontWeight: 500 }}
+                      style={{ border: 'none', background: 'transparent', padding: '6px 10px 6px 6px', fontWeight: 500, lineHeight: 1.4 }}
                     />
                   </td>
                   {PLAN_DEFS.map((p, pi) => (

@@ -239,13 +239,13 @@ function EnvoiPage({ state, pushToast }) {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 340px', gap: 20 }}>
+      <div className="envoi-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 340px', gap: 20 }}>
         {/* Form */}
         <form className="card card-pad" onSubmit={handleSend}>
           <div style={{ fontFamily: 'var(--font-serif)', fontSize: 22, fontWeight: 700, marginBottom: 4 }}>Coordonnées du client</div>
           <div style={{ color: 'var(--ip-muted)', fontSize: 13, marginBottom: 22 }}>Ces champs sont repris en en-tête du PDF généré.</div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <div className="two-col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
             <Field label="Nom du contact" value={form.clientName} onChange={v => setForm(f => ({...f, clientName: v}))} placeholder="Jean Tremblay" />
             <Field label="Entreprise" value={form.company} onChange={v => setForm(f => ({...f, company: v}))} placeholder="ABC Immobilier inc." />
             <Field label="Courriel *" value={form.email} onChange={v => setForm(f => ({...f, email: v}))} type="email" placeholder="client@exemple.com" required />
