@@ -2,7 +2,7 @@
 // Credentials are verified against a SHA-256 hash of "username::password".
 // The plaintext password never appears in the source.
 
-const AUTH_HASH = 'f986b74cc1f7159df38897e101712b7cc22adc5a182ccf47eda51cfaf7e9895b';
+const AUTH_HASH = 'abec29eed6a5084ba6e9493e538aafb6215c1e17e90a479b11aa8ce17280c01d';
 const AUTH_STORAGE_KEY = 'ipropre_auth_v1';
 const SESSION_DAYS = 30;
 

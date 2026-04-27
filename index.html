@@ -175,6 +175,9 @@
   @media (max-width: 900px) {
     .topbar { position: -webkit-sticky; position: sticky; top: 0; }
     .topbar-inner { flex-wrap: wrap; gap: 10px; padding: 10px 14px; }
+    .topbar-actions { order: 4; width: 100%; justify-content: flex-end; }
+    .topbar-actions button { font-size: 12px !important; padding: 5px 10px !important; }
+    .client-badge .meta { display: none; }
     .nav-tabs {
       order: 3; width: 100%;
       overflow-x: auto; -webkit-overflow-scrolling: touch;
@@ -293,7 +296,25 @@
 <script type="text/babel" src="soumission.jsx"></script>
 <script type="text/babel" src="galerie.jsx"></script>
 <script type="text/babel" src="annexes.jsx"></script>
-<script type="text/babel" src="auth.jsx"></script>
+<!-- Auth: only loaded in commercial mode. In client mode (?mode=client) we
+     inject a stub so the password hash is never sent to the client browser. -->
+<script>
+(function () {
+  var isClient = new URLSearchParams(window.location.search).get('mode') === 'client';
+  var s = document.createElement('script');
+  if (isClient) {
+    // Stub — client mode never displays LoginGate (envoi tab is hidden) but
+    // app.jsx still calls useAuth() on every render.
+    s.type = 'text/babel';
+    s.text = 'function useAuth(){return{authed:false,login:function(){},logout:function(){}}}\nfunction LoginGate(){return null}\nwindow.useAuth=useAuth;window.LoginGate=LoginGate;window.clearAuthSession=function(){};';
+  } else {
+    s.type = 'text/babel';
+    s.src = 'auth.jsx?v=3';
+  }
+  document.currentScript.parentNode.insertBefore(s, document.currentScript.nextSibling);
+})();
+</script>
+<script type="text/babel" src="storage.jsx"></script>
 <script type="text/babel" src="envoi.jsx"></script>
 <script type="text/babel" src="app.jsx"></script>
 
