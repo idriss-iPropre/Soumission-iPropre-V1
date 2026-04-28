@@ -187,17 +187,47 @@ function buildPrintableHtml(state, form) {
 </body></html>`;
 }
 
+// ---- Phone formatting & validation ----
+// Accepts only digits, formats as "xxx xxx xxxx" while typing.
+function formatPhone(raw) {
+  const d = String(raw || '').replace(/\D/g, '').slice(0, 10);
+  if (d.length <= 3) return d;
+  if (d.length <= 6) return d.slice(0, 3) + ' ' + d.slice(3);
+  return d.slice(0, 3) + ' ' + d.slice(3, 6) + ' ' + d.slice(6);
+}
+function isValidPhone(s) {
+  return /^\d{3} \d{3} \d{4}$/.test(String(s || '').trim());
+}
+
+const ENVOI_FORM_KEY = 'ipropre.envoi.form.v1';
+const DEFAULT_MESSAGE = "Bonjour,\n\nVoici la soumission personnalisée que nous avons préparée pour vous. Vous trouverez ci-joint le PDF détaillé avec nos services et les options tarifaires.\n\nSi vous avez la moindre question, n'hésitez pas à nous contacter — ce serait un plaisir d'en discuter avec vous.\n\nCordialement,\nIdriss Sassi — iPropre\n+1 (819) 995-2414";
+
 // EnvoiPage component
-function EnvoiPage({ state, pushToast, onLogout }) {
-  const [form, setForm] = React.useState({
-    clientName: '',
-    company: '',
-    email: '',
-    phone: '',
-    address: '',
-    message: "Bonjour,\n\nVoici la soumission personnalisée que nous avons préparée pour vous. Vous trouverez ci-joint le PDF détaillé avec nos services et les options tarifaires.\n\nSi vous avez la moindre question, n'hésitez pas à nous contacter — ce serait un plaisir d'en discuter avec vous.\n\nCordialement,\nIdriss Sassi — iPropre\n+1 (819) 995-2414",
+function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMeta }) {
+  // Load persisted form from localStorage so coordinates survive tab switches.
+  const [form, setForm] = React.useState(() => {
+    try {
+      const raw = localStorage.getItem(ENVOI_FORM_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        return {
+          clientName: parsed.clientName || '',
+          company: parsed.company || '',
+          email: parsed.email || '',
+          phone: parsed.phone || '',
+          address: parsed.address || '',
+          message: parsed.message || DEFAULT_MESSAGE,
+        };
+      }
+    } catch (e) {}
+    return { clientName:'', company:'', email:'', phone:'', address:'', message: DEFAULT_MESSAGE };
   });
   const [sent, setSent] = React.useState(false);
+
+  // Persist form on every change
+  React.useEffect(() => {
+    try { localStorage.setItem(ENVOI_FORM_KEY, JSON.stringify(form)); } catch (e) {}
+  }, [form]);
 
   const hiddenPlans = state.hiddenPlans || [];
   const visiblePlanIndices = PLAN_DEFS.map((_, i) => i).filter(i => !hiddenPlans.includes(i));
@@ -242,13 +272,37 @@ function EnvoiPage({ state, pushToast, onLogout }) {
     pushToast('PDF prêt — utilisez Imprimer / Enregistrer');
   };
 
+  // Validate all required client fields before allowing PDF/email
+  const validateClient = () => {
+    const missing = [];
+    if (!form.clientName.trim()) missing.push('Contact');
+    if (!form.company.trim()) missing.push('Entreprise');
+    if (!form.email.trim()) missing.push('Courriel');
+    if (!form.phone.trim()) missing.push('Téléphone');
+    if (!form.address.trim()) missing.push('Adresse du service');
+    if (missing.length) {
+      pushToast('Champs requis : ' + missing.join(', '));
+      return false;
+    }
+    if (!isValidPhone(form.phone)) {
+      pushToast('Téléphone invalide — format : xxx xxx xxxx');
+      return false;
+    }
+    return true;
+  };
+
   const handleSend = (e) => {
     e.preventDefault();
-    if (!form.email) { pushToast('Veuillez saisir un courriel'); return; }
+    if (!validateClient()) return;
     openPdfWindow();
     setTimeout(() => { window.location.href = buildMailtoUrl(); }, 400);
     setSent(true);
     pushToast('PDF ouvert et courriel préparé');
+  };
+
+  const handlePdfOnly = () => {
+    if (!validateClient()) return;
+    openPdfWindow();
   };
 
   const handleMailto = () => {
@@ -256,19 +310,96 @@ function EnvoiPage({ state, pushToast, onLogout }) {
     window.location.href = buildMailtoUrl();
   };
 
-  const handleCopyClientLink = () => {
-    if (typeof window.encodeStateToUrl !== 'function') { pushToast('Erreur : encodeur indisponible'); return; }
+  const [shortening, setShortening] = React.useState(false);
+
+  // We attach a linkId to every generated client URL so it can be revoked later.
+  // The linkId stays the same as long as we're on this Envoi screen — clicking
+  // "Copier" twice doesn't create a duplicate entry; sending generates one.
+  const [pendingLinkId, setPendingLinkId] = React.useState(() => (window.makeLinkId ? window.makeLinkId() : 'L' + Date.now()));
+
+  const buildLongUrl = (linkIdOverride) => {
+    if (typeof window.encodeStateToUrl !== 'function') return null;
     const encoded = window.encodeStateToUrl(state, form.clientName || form.company || '');
-    if (!encoded) { pushToast('Erreur lors de l\'encodage'); return; }
-    const url = `${location.origin}${location.pathname}?mode=client&data=${encoded}`;
+    if (!encoded) return null;
+    const linkId = linkIdOverride || pendingLinkId;
+    return `${location.origin}${location.pathname}?mode=client&data=${encoded}&lid=${linkId}`;
+  };
+
+  // Record that we sent a link, optionally push to Google Sheets.
+  const recordSentLink = async ({ url, shortUrl }) => {
+    if (!sentLinks) return;
+    const entry = {
+      linkId: pendingLinkId,
+      sentAt: Date.now(),
+      clientName: form.clientName || '',
+      company: form.company || '',
+      email: form.email || '',
+      url, shortUrl: shortUrl || '',
+      revoked: false,
+    };
+    sentLinks.record(entry);
+    // Rotate the pending id for the next send
+    if (window.makeLinkId) setPendingLinkId(window.makeLinkId());
+
+    // Push to Google Sheets if configured
+    if (gsheet && gsheet.url && window.buildSheetRow) {
+      const row = window.buildSheetRow({
+        state, form,
+        linkId: entry.linkId,
+        shortUrl: entry.shortUrl,
+        longUrl: entry.url,
+        soumissionName: (soumissionMeta && soumissionMeta.name) || '',
+        status: (soumissionMeta && soumissionMeta.status) || 'en_cours',
+      });
+      gsheet.send(row).then(r => {
+        if (r.ok) pushToast('✓ Ajouté à Google Sheets');
+      });
+    }
+  };
+
+  // Try to shorten via is.gd (free, CORS-enabled). Falls back to long URL.
+  const shortenUrl = async (longUrl) => {
+    try {
+      const api = `https://is.gd/create.php?format=json&url=${encodeURIComponent(longUrl)}`;
+      const resp = await fetch(api);
+      const data = await resp.json();
+      if (data.shorturl) return data.shorturl;
+    } catch (e) {}
+    return null;
+  };
+
+  const copyToClipboard = (text, successMsg) => {
     if (navigator.clipboard) {
-      navigator.clipboard.writeText(url).then(
-        () => pushToast('Lien client copié — collez-le dans votre courriel'),
-        () => { window.prompt('Copiez ce lien :', url); }
+      navigator.clipboard.writeText(text).then(
+        () => pushToast(successMsg),
+        () => { window.prompt('Copiez ce lien :', text); }
       );
     } else {
-      window.prompt('Copiez ce lien :', url);
+      window.prompt('Copiez ce lien :', text);
     }
+  };
+
+  const handleCopyClientLink = async () => {
+    const url = buildLongUrl();
+    if (!url) { pushToast('Erreur lors de l\'encodage'); return; }
+    setShortening(true);
+    pushToast('Génération du lien court...');
+    const short = await shortenUrl(url);
+    setShortening(false);
+    if (short) {
+      copyToClipboard(short, `Lien court copié : ${short}`);
+      recordSentLink({ url, shortUrl: short });
+    } else {
+      copyToClipboard(url, 'Lien long copié (raccourcissement indisponible)');
+      recordSentLink({ url });
+    }
+  };
+
+  const handleCopyLongLink = () => {
+    const url = buildLongUrl();
+    if (!url) { pushToast('Erreur lors de l\'encodage'); return; }
+    copyToClipboard(url, 'Lien long copié');
+    recordSentLink({ url });
   };
 
   const handleOpenClientPreview = () => {
@@ -332,13 +463,21 @@ function EnvoiPage({ state, pushToast, onLogout }) {
           <div style={{ color: 'var(--ip-muted)', fontSize: 13, marginBottom: 22 }}>Ces champs sont repris en en-tête du PDF généré.</div>
 
           <div className="two-col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-            <Field label="Nom du contact" value={form.clientName} onChange={v => setForm(f => ({...f, clientName: v}))} placeholder="Jean Tremblay" />
-            <Field label="Entreprise" value={form.company} onChange={v => setForm(f => ({...f, company: v}))} placeholder="ABC Immobilier inc." />
+            <Field label="Nom du contact *" value={form.clientName} onChange={v => setForm(f => ({...f, clientName: v}))} placeholder="Jean Tremblay" required />
+            <Field label="Entreprise *" value={form.company} onChange={v => setForm(f => ({...f, company: v}))} placeholder="ABC Immobilier inc." required />
             <Field label="Courriel *" value={form.email} onChange={v => setForm(f => ({...f, email: v}))} type="email" placeholder="client@exemple.com" required />
-            <Field label="Téléphone" value={form.phone} onChange={v => setForm(f => ({...f, phone: v}))} placeholder="(514) 000-0000" />
+            <Field
+              label="Téléphone *"
+              value={form.phone}
+              onChange={v => setForm(f => ({...f, phone: formatPhone(v)}))}
+              placeholder="514 000 0000"
+              required
+              invalid={form.phone && !isValidPhone(form.phone)}
+              hint={form.phone && !isValidPhone(form.phone) ? 'Format requis : xxx xxx xxxx' : null}
+            />
           </div>
           <div style={{ marginTop: 14 }}>
-            <Field label="Adresse du service" value={form.address} onChange={v => setForm(f => ({...f, address: v}))} placeholder="3095 Jean-Noël-Lavoie, Laval" />
+            <Field label="Adresse du service *" value={form.address} onChange={v => setForm(f => ({...f, address: v}))} placeholder="3095 Jean-Noël-Lavoie, Laval" required />
           </div>
 
           <div style={{ marginTop: 14 }}>
@@ -358,7 +497,7 @@ function EnvoiPage({ state, pushToast, onLogout }) {
             <button type="submit" className="btn btn-orange">
               <Icon.mail /> Générer PDF &amp; ouvrir courriel
             </button>
-            <button type="button" className="btn btn-ghost" onClick={openPdfWindow}>
+            <button type="button" className="btn btn-ghost" onClick={handlePdfOnly}>
               <Icon.download /> Télécharger PDF seulement
             </button>
             <button type="button" className="btn btn-ghost" onClick={handleMailto}>
@@ -378,16 +517,20 @@ function EnvoiPage({ state, pushToast, onLogout }) {
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button type="button" className="btn btn-ghost" onClick={handleCopyClientLink} style={{ fontSize: 12.5 }}>
+              <button type="button" className="btn btn-orange" onClick={handleCopyClientLink} style={{ fontSize: 12.5 }} disabled={shortening}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                Copier le lien client
+                {shortening ? 'Génération...' : 'Copier le lien court'}
+              </button>
+              <button type="button" className="btn btn-ghost" onClick={handleCopyLongLink} style={{ fontSize: 12.5 }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                Lien long (sans raccourcisseur)
               </button>
               <button type="button" className="btn btn-ghost" onClick={handleOpenClientPreview} style={{ fontSize: 12.5 }}>
                 <Icon.external /> Aperçu de la vue client
               </button>
             </div>
             <div style={{ marginTop: 8, fontSize: 11, color: 'var(--ip-muted)', lineHeight: 1.5 }}>
-              <em>Note :</em> ce lien encode toute la soumission dans l'URL (sans serveur). Le client peut cocher son plan ou demander des services supplémentaires, puis vous renvoyer le PDF mis à jour par courriel.
+              <em>Note :</em> le « lien court » utilise <strong>is.gd</strong> pour générer une URL compacte (type <code>https://is.gd/abc123</code>) facile à coller dans un courriel ou une signature. Si is.gd est indisponible, le lien long sera copié à la place. Toute la soumission est encodée dans le lien — aucun serveur requis.
             </div>
           </div>
 
@@ -449,10 +592,10 @@ function EnvoiPage({ state, pushToast, onLogout }) {
   );
 }
 
-function Field({ label, value, onChange, type='text', placeholder, required }) {
+function Field({ label, value, onChange, type='text', placeholder, required, invalid, hint }) {
   return (
     <label style={{ display: 'block' }}>
-      <div style={{ fontSize: 12, fontFamily: 'var(--font-mono)', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--ip-muted)', marginBottom: 6 }}>{label}</div>
+      <div style={{ fontSize: 12, fontFamily: 'var(--font-mono)', letterSpacing: '0.12em', textTransform: 'uppercase', color: invalid ? '#c0392b' : 'var(--ip-muted)', marginBottom: 6 }}>{label}</div>
       <input
         className="txt-input"
         type={type}
@@ -460,7 +603,9 @@ function Field({ label, value, onChange, type='text', placeholder, required }) {
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         required={required}
+        style={invalid ? { borderColor: '#c0392b', boxShadow: '0 0 0 3px rgba(192,57,43,0.08)' } : undefined}
       />
+      {hint && <div style={{ fontSize: 11, color: '#c0392b', marginTop: 4 }}>{hint}</div>}
     </label>
   );
 }

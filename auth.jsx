@@ -53,7 +53,7 @@ function useAuth() {
 // Expose to other Babel scripts
 window.useAuth = window.useAuth || null;
 
-function LoginGate({ onSuccess }) {
+function LoginGate({ onSuccess, fullscreen }) {
   const [user, setUser] = React.useState('');
   const [pass, setPass] = React.useState('');
   const [remember, setRemember] = React.useState(true);
@@ -79,28 +79,37 @@ function LoginGate({ onSuccess }) {
   };
 
   return (
-    <section className="container" style={{ paddingTop: 32, paddingBottom: 60 }}>
+    <section className="container" style={fullscreen ? {
+      minHeight: '100vh', display: 'grid', placeItems: 'center',
+      background: 'linear-gradient(180deg, #faf6ef 0%, #f0eadf 100%)',
+      paddingTop: 0, paddingBottom: 0,
+    } : { paddingTop: 32, paddingBottom: 60 }}>
       <div style={{
-        maxWidth: 440, margin: '40px auto', background: '#fff',
+        maxWidth: 440, margin: fullscreen ? 0 : '40px auto', background: '#fff',
         border: '1px solid var(--ip-line)', borderRadius: 16,
-        padding: '32px 30px', boxShadow: '0 10px 40px rgba(20,23,40,0.06)'
+        padding: '32px 30px', boxShadow: fullscreen ? '0 30px 80px rgba(20,23,40,0.12)' : '0 10px 40px rgba(20,23,40,0.06)',
+        width: '94%',
       }}>
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
-          <div style={{
-            width: 56, height: 56, borderRadius: 16, margin: '0 auto 14px',
-            background: 'var(--ip-orange)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: '#fff'
-          }}>
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="11" width="18" height="11" rx="2"/>
-              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-            </svg>
+          <div style={{ marginBottom: 14, display: 'flex', justifyContent: 'center' }}>
+            {window.BrandMark ? <window.BrandMark size={56} /> : (
+              <div style={{
+                width: 56, height: 56, borderRadius: 16,
+                background: 'var(--ip-orange)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: '#fff'
+              }}>
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="11" width="18" height="11" rx="2"/>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+              </div>
+            )}
           </div>
           <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: 26, margin: 0, color: 'var(--ip-ink)' }}>
-            Accès protégé
+            {fullscreen ? 'i' : 'Accès protégé'}{fullscreen && <em style={{ fontStyle: 'italic' }}>Propre</em>}
           </h2>
           <p style={{ fontSize: 14, color: 'var(--ip-muted)', margin: '6px 0 0' }}>
-            L'envoi au client est réservé aux utilisateurs autorisés.
+            {fullscreen ? 'Connectez-vous pour accéder à votre espace.' : 'L\'envoi au client est réservé aux utilisateurs autorisés.'}
           </p>
         </div>
 
