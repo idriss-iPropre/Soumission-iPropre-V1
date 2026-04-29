@@ -1,5 +1,9 @@
 // core/pdf.js — Convert printable HTML to a PDF Blob, then base64.
 // Uses html2pdf.js (must be loaded before this script).
+//
+// IMPORTANT: html2pdf must receive an HTML *string* (not a DOM element).
+// When given a DOM node, its internal clone loses computed height and
+// html2canvas captures a 0-height image → blank PDF.
 
 (function () {
   function blobToBase64(blob) {
@@ -15,32 +19,31 @@
     });
   }
 
-  // Wait for all <img> in a container to load (or fail fast on timeout).
-  function waitForImages(container, timeoutMs = 6000) {
-    const imgs = Array.from(container.querySelectorAll('img'));
-    if (imgs.length === 0) return Promise.resolve();
-    return new Promise((resolve) => {
-      let remaining = imgs.length;
-      const done = () => { remaining--; if (remaining <= 0) resolve(); };
-      imgs.forEach((img) => {
-        if (img.complete && img.naturalWidth > 0) { done(); return; }
-        img.addEventListener('load', done, { once: true });
-        img.addEventListener('error', done, { once: true });
-      });
-      setTimeout(resolve, timeoutMs);
-    });
-  }
-
-  // Wait for fonts on the document. Falls back to a 1.5s timeout.
+  // Wait for fonts on the document (so the printable inherits them).
   function waitForFonts(timeoutMs = 2000) {
-    if (!document.fonts || !document.fonts.ready) return new Promise((r) => setTimeout(r, 500));
+    if (!document.fonts || !document.fonts.ready) return new Promise((r) => setTimeout(r, 300));
     return Promise.race([
       document.fonts.ready,
       new Promise((r) => setTimeout(r, timeoutMs)),
     ]);
   }
 
-  // Render printable HTML offscreen, capture to PDF, return a Blob.
+  // Pre-load every <img> referenced in the HTML so html2canvas finds them in cache.
+  function preloadImages(html, timeoutMs = 5000) {
+    const matches = Array.from(html.matchAll(/<img[^>]+src=["']([^"']+)["']/gi));
+    if (matches.length === 0) return Promise.resolve();
+    return Promise.race([
+      Promise.all(matches.map(m => new Promise((resolve) => {
+        const img = new Image();
+        img.onload = resolve;
+        img.onerror = resolve; // fail-safe — don't block on broken images
+        img.src = m[1];
+      }))),
+      new Promise((r) => setTimeout(r, timeoutMs)),
+    ]);
+  }
+
+  // Render printable HTML to a PDF Blob.
   async function htmlToPdfBlob(html, { filename = 'soumission.pdf' } = {}) {
     if (!window.html2pdf) throw new Error('html2pdf.js not loaded');
 
@@ -48,85 +51,54 @@
     let body = html;
     const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
     if (bodyMatch) body = bodyMatch[1];
-    // Remove any no-print toolbar
+    // Strip the no-print toolbar (it's only for the print-window flow)
     body = body.replace(/<div class="no-print"[\s\S]*?<\/div>\s*(?=<div class="doc")/i, '');
 
     const styleMatch = html.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
-    let styles = styleMatch ? styleMatch[1] : '';
+    const styles = styleMatch ? styleMatch[1] : '';
 
-    // ⚠️ html2canvas does NOT load <link rel="stylesheet"> resources.
-    //    Replace Google-Fonts font-families with safe system fallbacks so text actually renders.
-    //    The visual hierarchy survives — Playfair → serif, Inter → sans, JetBrains Mono → monospace.
-    const safeStyleOverride = `
-      /* PDF capture safe-overrides — html2canvas can't load external fonts */
-      .pdf-root, .pdf-root * {
-        font-family: Georgia, 'Times New Roman', serif !important;
-      }
+    // html2canvas can't fetch <link rel="stylesheet">. Force safe system fonts
+    // so text renders even if Google Fonts didn't load in the capture context.
+    const safeFontOverride = `
+      .pdf-root, .pdf-root * { font-family: Georgia, 'Times New Roman', serif !important; }
       .pdf-root [style*="Inter"],
       .pdf-root [style*="Inter"] * { font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif !important; }
       .pdf-root [style*="JetBrains"],
       .pdf-root [style*="JetBrains"] * { font-family: 'Courier New', monospace !important; }
-      /* Make sure the wrapper itself is opaque white so html2canvas captures it */
-      .pdf-root { background: #ffffff !important; color: #111 !important; }
+      .pdf-root { background:#fff !important; color:#111 !important; }
     `;
 
-    const wrap = document.createElement('div');
-    wrap.className = 'pdf-root';
-    // Mount in flow but invisible — html2canvas needs real layout boxes.
-    wrap.style.position = 'absolute';
-    wrap.style.top = '0';
-    wrap.style.left = '0';
-    wrap.style.width = '794px'; // ~A4 width @ 96dpi
-    wrap.style.background = '#ffffff';
-    wrap.style.color = '#000000';
-    wrap.style.zIndex = '-1';
-    wrap.style.opacity = '0.01'; // not 0 — some browsers skip painting at exactly 0
-    wrap.style.pointerEvents = 'none';
-    wrap.innerHTML =
+    // Build the auto-contained HTML STRING that html2pdf will parse.
+    const fullHtml =
       '<style>' + styles + '</style>' +
-      '<style>' + safeStyleOverride + '</style>' +
-      '<div style="width:794px;background:#fff;color:#111">' + body + '</div>';
-    document.body.appendChild(wrap);
+      '<style>' + safeFontOverride + '</style>' +
+      '<div class="pdf-root" style="width:794px;background:#fff;color:#111;padding:0;margin:0">' +
+      body +
+      '</div>';
 
-    try {
-      // Wait for images + fonts + a couple of paint frames
-      await Promise.all([waitForImages(wrap), waitForFonts()]);
-      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    // Pre-warm: fonts + images. html2pdf creates its own offscreen container,
+    // so we just need the browser cache populated before capture starts.
+    await Promise.all([waitForFonts(), preloadImages(html)]);
 
-      // Sanity check — if the wrapper has zero rendered height, bail with a clear error
-      const rect = wrap.getBoundingClientRect();
-      if (rect.height < 50) {
-        console.warn('[pdf] wrapper height too small:', rect);
-      }
+    const opts = {
+      margin: [10, 10, 10, 10],
+      filename,
+      image: { type: 'jpeg', quality: 0.92 },
+      html2canvas: {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+        windowWidth: 794,
+      },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true },
+      pagebreak: { mode: ['css', 'legacy'] },
+    };
 
-      const opts = {
-        margin: [10, 10, 10, 10],
-        filename,
-        image: { type: 'jpeg', quality: 0.92 },
-        html2canvas: {
-          scale: 2,
-          useCORS: true,
-          allowTaint: true,
-          logging: false,
-          backgroundColor: '#ffffff',
-          windowWidth: 794,
-          width: 794,
-          // Capture at the wrapper position, not viewport
-          x: 0,
-          y: 0,
-          scrollX: 0,
-          scrollY: 0,
-          foreignObjectRendering: false,
-          removeContainer: true,
-        },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true },
-        pagebreak: { mode: ['css', 'legacy'] },
-      };
-      const blob = await window.html2pdf().set(opts).from(wrap).outputPdf('blob');
-      return blob;
-    } finally {
-      try { document.body.removeChild(wrap); } catch (e) {}
-    }
+    // Pass the STRING — never a DOM element. (Element loses height in clone → blank PDF.)
+    const blob = await window.html2pdf().set(opts).from(fullHtml).outputPdf('blob');
+    return blob;
   }
 
   async function htmlToPdfBase64(html, opts) {
