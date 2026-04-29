@@ -68,11 +68,105 @@ function saveAll(list) {
 function makeId() { return 's_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
 function makeVersionId() { return 'v_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 4); }
 
+// ---------- Cloud sync helpers ----------
+// Merge a remote row from Sheets into the local shape.
+// Remote shape: { id, nom, statut, dateCreation, dateModif, dataJSON, ... }
+// Local shape:  { id, name, status, createdAt, updatedAt, state, versions: [] }
+function remoteToLocal(remote) {
+  let state = null;
+  try { state = remote.dataJSON ? JSON.parse(remote.dataJSON) : null; } catch (e) { state = null; }
+  if (!state) return null; // can't reconstruct without payload
+  return {
+    id: remote.id,
+    name: remote.nom || ('Soumission ' + remote.id),
+    state,
+    status: remote.statut || 'en_cours',
+    createdAt: remote.dateCreation ? new Date(remote.dateCreation).getTime() : Date.now(),
+    updatedAt: remote.dateModif ? new Date(remote.dateModif).getTime() : Date.now(),
+    versions: [],
+    _fromCloud: true,
+  };
+}
+
+// Pull all remote rows, merge with local. The newer `updatedAt` wins per id.
+// Returns the merged list.
+async function syncFromCloud() {
+  if (!window.repo || !window.repo.Soumissions) return null;
+  let remoteList = [];
+  try {
+    remoteList = await window.repo.Soumissions.list();
+    if (!Array.isArray(remoteList)) remoteList = [];
+  } catch (e) {
+    console.warn('[sync] cloud list failed:', e.message);
+    return null;
+  }
+
+  const localList = loadAll();
+  const localById = new Map(localList.map(it => [it.id, it]));
+  const mergedById = new Map(localById);
+
+  for (const r of remoteList) {
+    const local = remoteToLocal(r);
+    if (!local || !local.id) continue;
+    const existing = mergedById.get(local.id);
+    if (!existing) {
+      // Cloud-only entry → take it
+      mergedById.set(local.id, local);
+    } else {
+      // Conflict: keep newer (versions are local-only, preserve them)
+      if (local.updatedAt > existing.updatedAt) {
+        mergedById.set(local.id, { ...local, versions: existing.versions || [] });
+      }
+      // else: keep local (it's newer or equal)
+    }
+  }
+
+  const merged = Array.from(mergedById.values()).sort((a, b) => b.updatedAt - a.updatedAt);
+  saveAll(merged);
+  return merged;
+}
+
+window.syncFromCloud = syncFromCloud;
+
 function useSoumissions() {
   const [list, setList] = React.useState(loadAll);
   const [currentId, setCurrentId] = React.useState(null);
+  const [syncing, setSyncing] = React.useState(false);
+  const [lastSync, setLastSync] = React.useState(null);
 
   const refresh = () => setList(loadAll());
+
+  // Pull the latest from cloud, merge, refresh local list.
+  // Resolves with { ok: bool, count, error? }
+  const pullFromCloud = React.useCallback(async () => {
+    setSyncing(true);
+    try {
+      const merged = await syncFromCloud();
+      if (merged) {
+        setList(merged);
+        setLastSync(Date.now());
+        return { ok: true, count: merged.length };
+      }
+      return { ok: false, error: 'Aucun retour du serveur' };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    } finally {
+      setSyncing(false);
+    }
+  }, []);
+
+  // Auto-sync on first mount IF the API URL is configured.
+  React.useEffect(() => {
+    if (!window.api || !window.api.getUrl()) return;
+    let cancelled = false;
+    (async () => {
+      const r = await pullFromCloud();
+      if (cancelled) return;
+      // Silent failure on first sync — user will see toast on manual click
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line
+  }, []);
 
   // Save: if the soumission already exists, push the previous state to versions[].
   const save = (state, name) => {
@@ -143,6 +237,10 @@ function useSoumissions() {
     saveAll(all);
     setList(all);
     if (currentId === id) setCurrentId(null);
+    // Also delete on cloud (fire-and-forget)
+    if (window.repo && window.repo.Soumissions) {
+      window.repo.Soumissions.delete(id).catch(() => {});
+    }
   };
 
   const restoreVersion = (id, vid) => {
@@ -178,6 +276,7 @@ function useSoumissions() {
   return {
     list, currentId, save, saveAs, load, rename, remove, refresh, setCurrentId,
     setStatus, restoreVersion, deleteVersion,
+    pullFromCloud, syncing, lastSync,
   };
 }
 
@@ -270,14 +369,45 @@ function SoumissionsModal({ open, onClose, store, currentState, onLoad, pushToas
   return (
     <div className="modal-bg" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 760, width: '94%' }}>
-        <div style={{ padding: '20px 24px 14px', borderBottom: '1px solid var(--ip-line)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ padding: '20px 24px 14px', borderBottom: '1px solid var(--ip-line)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
           <div>
             <div style={{ fontFamily: 'var(--font-serif)', fontSize: 22, fontWeight: 700 }}>Mes soumissions</div>
-            <div style={{ fontSize: 12.5, color: 'var(--ip-muted)', marginTop: 2 }}>{store.list.length} au total · gestion par statut + historique des versions</div>
+            <div style={{ fontSize: 12.5, color: 'var(--ip-muted)', marginTop: 2 }}>
+              {store.list.length} au total · gestion par statut + historique des versions
+              {store.lastSync && (
+                <span style={{ marginLeft: 8, color: '#2c8a4a', fontFamily: 'var(--font-mono)', fontSize: 11 }}>
+                  · sync {new Date(store.lastSync).toLocaleTimeString('fr-CA', { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              )}
+            </div>
           </div>
-          <button onClick={onClose} style={{ border: 'none', background: 'transparent', width: 32, height: 32, cursor: 'pointer' }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button
+              className="btn btn-ghost"
+              onClick={async () => {
+                if (!window.api || !window.api.getUrl()) {
+                  pushToast('Connectez d\'abord Google Sheets');
+                  return;
+                }
+                const r = await store.pullFromCloud();
+                if (r.ok) pushToast(`✓ Synchronisé — ${r.count} soumission${r.count > 1 ? 's' : ''}`);
+                else pushToast('✗ Sync impossible : ' + (r.error || 'erreur'));
+              }}
+              disabled={store.syncing}
+              title="Synchroniser depuis Google Sheets"
+              style={{ padding: '7px 12px', fontSize: 12.5, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ animation: store.syncing ? 'spin 1s linear infinite' : 'none' }}>
+                <polyline points="23 4 23 10 17 10"/>
+                <polyline points="1 20 1 14 7 14"/>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+              </svg>
+              {store.syncing ? 'Sync…' : 'Synchroniser'}
+            </button>
+            <button onClick={onClose} style={{ border: 'none', background: 'transparent', width: 32, height: 32, cursor: 'pointer' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
         </div>
 
         {/* Status filter tabs */}
