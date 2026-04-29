@@ -203,7 +203,7 @@ const ENVOI_FORM_KEY = 'ipropre.envoi.form.v1';
 const DEFAULT_MESSAGE = "Bonjour,\n\nVoici la soumission personnalisée que nous avons préparée pour vous. Vous trouverez ci-joint le PDF détaillé avec nos services et les options tarifaires.\n\nSi vous avez la moindre question, n'hésitez pas à nous contacter — ce serait un plaisir d'en discuter avec vous.\n\nCordialement,\nIdriss Sassi — iPropre\n+1 (819) 995-2414";
 
 // EnvoiPage component
-function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMeta }) {
+function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMeta, isDirty, lastPdfUrl, onGoToSoumission }) {
   // Load persisted form from localStorage so coordinates survive tab switches.
   const [form, setForm] = React.useState(() => {
     try {
@@ -341,18 +341,21 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
     // Rotate the pending id for the next send
     if (window.makeLinkId) setPendingLinkId(window.makeLinkId());
 
-    // Push to Google Sheets if configured
-    if (gsheet && gsheet.url && window.buildSheetRow) {
-      const row = window.buildSheetRow({
-        state, form,
+    // Push to Google Sheets (silently — local link tracking is the source of truth).
+    if (gsheet && gsheet.url) {
+      const soumissionId = (soumissionMeta && soumissionMeta.id) || '';
+      // Track the link in the LiensEnvoyes tab
+      gsheet.recordLien({ linkId: entry.linkId, soumissionId, destinataire: form.email || '' });
+      // Record the email send in the Envois tab — reuse the already-uploaded PDF
+      // (the Save flow uploaded it; we don't re-generate here to avoid duplicates).
+      gsheet.recordEnvoi({
+        soumissionId,
+        type: 'premier',
+        destinataire: form.email || '',
+        objet: `Soumission iPropre — ${form.company || form.clientName || ''}`,
         linkId: entry.linkId,
-        shortUrl: entry.shortUrl,
-        longUrl: entry.url,
-        soumissionName: (soumissionMeta && soumissionMeta.name) || '',
-        status: (soumissionMeta && soumissionMeta.status) || 'en_cours',
-      });
-      gsheet.send(row).then(r => {
-        if (r.ok) pushToast('✓ Ajouté à Google Sheets');
+        notes: shortUrl || url || '',
+        pdfUrl: lastPdfUrl || '',
       });
     }
   };
@@ -456,7 +459,8 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
         )}
       </div>
 
-      <div className="envoi-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 340px', gap: 20 }}>
+      <div className="envoi-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 340px', gap: 20, position: 'relative' }}>
+        {isDirty && <DirtyLockBanner onGoToSoumission={onGoToSoumission} />}
         {/* Form */}
         <form className="card card-pad" onSubmit={handleSend}>
           <div style={{ fontFamily: 'var(--font-serif)', fontSize: 22, fontWeight: 700, marginBottom: 4 }}>Coordonnées du client</div>
@@ -520,10 +524,6 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
               <button type="button" className="btn btn-orange" onClick={handleCopyClientLink} style={{ fontSize: 12.5 }} disabled={shortening}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                 {shortening ? 'Génération...' : 'Copier le lien court'}
-              </button>
-              <button type="button" className="btn btn-ghost" onClick={handleCopyLongLink} style={{ fontSize: 12.5 }}>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                Lien long (sans raccourcisseur)
               </button>
               <button type="button" className="btn btn-ghost" onClick={handleOpenClientPreview} style={{ fontSize: 12.5 }}>
                 <Icon.external /> Aperçu de la vue client
@@ -611,3 +611,31 @@ function Field({ label, value, onChange, type='text', placeholder, required, inv
 }
 
 Object.assign(window, { EnvoiPage, buildPrintableHtml });
+
+function DirtyLockBanner({ onGoToSoumission }) {
+  return (
+    <div style={{
+      position: 'absolute', inset: 0, zIndex: 50,
+      background: 'rgba(247, 244, 239, 0.92)',
+      backdropFilter: 'blur(2px)',
+      display: 'grid', placeItems: 'center',
+      borderRadius: 12,
+    }}>
+      <div className="card card-pad" style={{ maxWidth: 480, textAlign: 'center', padding: 32, boxShadow: '0 12px 40px rgba(0,0,0,0.12)' }}>
+        <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#fff4e6', color: 'var(--ip-orange)', display: 'grid', placeItems: 'center', margin: '0 auto 16px' }}>
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        </div>
+        <div style={{ fontFamily: 'var(--font-serif)', fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Modifications non enregistrées</div>
+        <div style={{ color: 'var(--ip-muted)', fontSize: 13.5, lineHeight: 1.55, marginBottom: 20 }}>
+          Vous avez modifié la soumission depuis le dernier enregistrement. Pour garantir que le PDF envoyé au client correspond exactement à ce qui est sauvegardé, retournez à l'onglet <strong style={{ color: 'var(--ip-ink)' }}>Soumission</strong> et cliquez <strong style={{ color: 'var(--ip-ink)' }}>Enregistrer</strong>.
+        </div>
+        {onGoToSoumission && (
+          <button type="button" className="btn btn-orange" onClick={onGoToSoumission}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+            Retour à Soumission
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}

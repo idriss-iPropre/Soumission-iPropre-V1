@@ -84,6 +84,12 @@ function App() {
   const [state, setStateRaw] = React.useState(initialState);
   const [history, setHistory] = React.useState([]);
   const [future, setFuture] = React.useState([]);
+  // Tracks whether the editor has unsaved changes since last save/load.
+  // Used to lock the Envoi tab and force user to save first.
+  const [isDirty, setIsDirty] = React.useState(false);
+  // Last PDF Drive URL associated with the current soumission.
+  // Captured when Enregistrer succeeds; reused by Envoi (no re-upload).
+  const [lastPdfUrl, setLastPdfUrl] = React.useState('');
 
   const setState = React.useCallback((updater) => {
     setStateRaw(prev => {
@@ -96,6 +102,7 @@ function App() {
         return nh.length > 50 ? nh.slice(nh.length - 50) : nh;
       });
       setFuture([]);
+      setIsDirty(true);
       return next;
     });
   }, []);
@@ -132,11 +139,68 @@ function App() {
     for (const [k, v] of Object.entries(t)) document.documentElement.style.setProperty(k, v);
   }, [tweaks.theme]);
 
+  // Push current state to Google Sheets + Drive PDF.
+  // Returns a promise that resolves with the Drive PDF URL (if any).
+  // The PDF is then cached in `lastPdfUrl` and reused by the Envoi tab.
+  const syncToSheets = async (savedItem, trigger = 'save') => {
+    if (!gsheet || !gsheet.url || !savedItem) return null;
+    let form = {};
+    try { form = JSON.parse(localStorage.getItem('ipropre.envoi.form.v1') || '{}'); } catch (e) {}
+    const record = (typeof buildSoumissionRecord === 'function')
+      ? buildSoumissionRecord({ state, form, soumissionName: savedItem.name, status: savedItem.status || 'en_cours', id: savedItem.id })
+      : null;
+    if (!record) return null;
+
+    // Soumissions row (fire-and-forget — local save is the source of truth)
+    gsheet.saveSoumission(record);
+
+    // Versions tab — push the most recent local snapshot.
+    const lastVersion = (savedItem.versions || [])[0];
+    if (lastVersion && window.repo && window.repo.Versions) {
+      window.repo.Versions.create({
+        soumissionId: savedItem.id,
+        label: lastVersion.label || '',
+        auteur: '',
+        data: lastVersion.state,
+      }).catch(() => {});
+    }
+
+    // PDF generation + Drive upload — awaited so we can cache the URL.
+    if (window.pdfTools && window.repo && window.repo.Pdfs && typeof buildPrintableHtml === 'function') {
+      try {
+        const html = buildPrintableHtml(state, form);
+        const filename = window.pdfTools.buildPdfFilename({
+          soumissionName: savedItem.name,
+          clientName: form.clientName || form.company,
+          trigger,
+        });
+        const base64 = await window.pdfTools.htmlToPdfBase64(html, { filename });
+        const result = await window.repo.Pdfs.upload({
+          soumissionId: savedItem.id,
+          base64,
+          nomFichier: filename,
+          label: trigger === 'send' ? 'Envoi client' : (lastVersion?.label || 'Enregistrement'),
+          trigger,
+        });
+        if (result && result.url) {
+          setLastPdfUrl(result.url);
+          return result.url;
+        }
+      } catch (err) {
+        console.warn('PDF upload failed:', err && err.message ? err.message : err);
+      }
+    }
+    return null;
+  };
+
   // Save current soumission (overwrites if currentId exists)
-  const handleQuickSave = () => {
+  const handleQuickSave = async () => {
     if (store.currentId) {
-      store.save(state, currentName);
-      toastFn('Enregistrée');
+      const item = store.save(state, currentName);
+      setIsDirty(false);
+      toastFn('Enregistrement en cours…');
+      const pdfUrl = await syncToSheets(item || { id: store.currentId, name: currentName });
+      toastFn(pdfUrl ? '✓ Enregistrée + PDF sur Drive' : '✓ Enregistrée');
     } else {
       // Force save-as for first save
       setSaveAsName(currentName === 'Soumission sans titre' ? `Soumission du ${new Date().toLocaleDateString('fr-CA')}` : currentName);
@@ -144,13 +208,39 @@ function App() {
     }
   };
 
-  const handleSaveAs = (name) => {
+  const handleSaveAs = async (name) => {
     const item = store.saveAs(state, name);
     setCurrentName(item.name);
-    toastFn('Enregistrée');
+    setIsDirty(false);
     setShowSaveAsInline(false);
     setSaveAsName('');
+    toastFn('Enregistrement en cours…');
+    const pdfUrl = await syncToSheets(item);
+    toastFn(pdfUrl ? '✓ Enregistrée + PDF sur Drive' : '✓ Enregistrée');
   };
+
+  // Wrapped store — adds Sheets sync to status changes & version restores.
+  // The local store stays the source of truth; Sheets is best-effort + silent.
+  const storeWithSync = React.useMemo(() => ({
+    ...store,
+    setStatus: (id, statut) => {
+      store.setStatus(id, statut);
+      if (gsheet && gsheet.url && window.repo) {
+        window.repo.Soumissions.setStatus(id, statut).catch(() => {});
+      }
+    },
+    restoreVersion: (id, vid) => {
+      const updated = store.restoreVersion(id, vid);
+      if (updated && id === store.currentId) {
+        // Reflect restored state in the active editor
+        setStateRaw(updated.state);
+        setHistory([]); setFuture([]);
+      }
+      // Push the new "current" snapshot to Sheets
+      if (updated) syncToSheets(updated);
+      return updated;
+    },
+  }), [store, gsheet]);
 
   const handleLoadSoumission = (item) => {
     setStateRaw(item.state);
@@ -159,6 +249,8 @@ function App() {
     setCurrentName(item.name);
     store.setCurrentId(item.id);
     setShowSavedModal(false);
+    setIsDirty(false);
+    setLastPdfUrl(''); // Will be re-populated on next save
     toastFn(`Ouvert : ${item.name}`);
     setTab('soumission');
   };
@@ -177,6 +269,8 @@ function App() {
     });
     setHistory([]);
     setFuture([]);
+    setIsDirty(false);
+    setLastPdfUrl('');
     setCurrentName('Soumission sans titre');
     store.setCurrentId(null);
     setShowNewModal(false);
@@ -360,7 +454,11 @@ function App() {
             onLogout={() => { logout(); toastFn('Déconnecté'); }}
             sentLinks={sentLinks}
             gsheet={gsheet}
+            isDirty={isDirty}
+            lastPdfUrl={lastPdfUrl}
+            onGoToSoumission={() => setTab('soumission')}
             soumissionMeta={{
+              id: store.currentId || '',
               name: currentName,
               status: store.list.find(s => s.id === store.currentId)?.status || 'en_cours',
             }}
@@ -410,7 +508,7 @@ function App() {
         <SoumissionsModal
           open={showSavedModal}
           onClose={() => setShowSavedModal(false)}
-          store={store}
+          store={storeWithSync}
           currentState={state}
           onLoad={handleLoadSoumission}
           pushToast={toastFn}
