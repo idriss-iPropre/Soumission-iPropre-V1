@@ -44,7 +44,11 @@ function AnnexesPage() {
       const v = videoRef.current;
       if (!v) return;
       v.volume = 0.35;
-      v.play().then(() => setPlaying(true)).catch(() => {});
+      v.muted = true; // sourdine pour contourner la politique autoplay des navigateurs
+      v.play().then(() => {
+        setPlaying(true);
+        setMuted(true);
+      }).catch(() => {});
     }, 3000);
     return () => {
       clearTimeout(timerRef.current);
