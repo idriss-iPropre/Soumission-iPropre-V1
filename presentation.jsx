@@ -141,21 +141,26 @@ function PresentationPage() {
         { title: 'Immeubles & Bureaux', items: [
           { src: 'assets/logos/remax.png', name: 'Remax De Francheville' },
           { src: 'assets/logos/progi.jpeg', name: 'Progi' },
-          { name: 'Polyclinique' }, { name: 'Trifluviens' }, { name: 'UPA' },
+          { src: 'assets/logos/immeubles-polyclinique.png', name: 'Immeubles de la Polyclinique' },
+          { src: 'assets/logos/edifice-trifluvien.jpg', name: 'Édifice Le Trifluvien', photo: true },
+          { src: 'assets/logos/upa.jpg', name: 'UPA' },
         ]},
         { title: 'Secteur médical', items: [
           { src: 'assets/logos/biron.png', name: 'Biron' },
           { src: 'assets/logos/gmf.png', name: 'GMF Trois-Rivières' },
-          { name: 'IMAGIX' }, { name: 'Épiderma' }, { name: 'GMF Poly' },
+          { src: 'assets/logos/imagix.png', name: 'IMAGIX' },
+          { src: 'assets/logos/polyclinique-oreille.png', name: "Polyclinique de l'Oreille" },
+          { src: 'assets/logos/neuractiv.jpeg', name: 'Neuractiv' },
         ]},
         { title: 'Éducation & Loisirs', items: [
           { src: 'assets/logos/clmp.png', name: 'Centre Multiplus' },
           { src: 'assets/logos/cpe.jpeg', name: 'CPE Mamuse et Méduque' },
-          { name: 'CPE Méduc' },
         ]},
         { title: 'Industriel', items: [
           { src: 'assets/logos/moeve.png', name: 'MOEVE' },
-          { name: 'Yvon Couture' }, { name: 'CCI' }, { name: 'Canadoil' },
+          { src: 'assets/logos/yvon-couture.png', name: 'Yvon Couture', scale: 1.35 },
+          { src: 'assets/logos/cci.webp', name: 'CCI' },
+          { src: 'assets/logos/canadoil.webp', name: 'Canadoil' },
         ]},
       ].map(sec => (
         <div key={sec.title} style={{ marginBottom: 22 }}>
@@ -168,17 +173,27 @@ function PresentationPage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12 }}>
             {sec.items.map(it => (
               <div key={it.name} style={{
-                height: 100, borderRadius: 12, background: '#fff',
+                height: 120, borderRadius: 12, background: '#fff',
                 border: '1px solid var(--ip-line-2)',
                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                padding: 14, gap: 6,
+                padding: it.photo ? 0 : 10, gap: 6, overflow: 'hidden', position: 'relative',
               }}>
-                {it.src ? (
-                  <img src={it.src} alt={it.name} style={{ maxWidth: '88%', maxHeight: 48, objectFit: 'contain' }} />
+                {it.photo ? (
+                  <>
+                    <img src={it.src} alt={it.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <div style={{
+                      position: 'absolute', left: 0, right: 0, bottom: 0,
+                      padding: '6px 10px',
+                      background: 'linear-gradient(to top, rgba(0,0,0,0.72), rgba(0,0,0,0))',
+                      color: '#fff', fontFamily: 'var(--font-serif)', fontSize: 13, fontWeight: 600,
+                      textAlign: 'center', letterSpacing: '-0.01em',
+                    }}>{it.name}</div>
+                  </>
+                ) : it.src ? (
+                  <img src={it.src} alt={it.name} style={{ maxWidth: '94%', maxHeight: '100%', objectFit: 'contain', transform: it.scale ? `scale(${it.scale})` : undefined }} />
                 ) : (
                   <div style={{ fontFamily: 'var(--font-serif)', fontSize: 17, fontWeight: 700, color: 'var(--ip-muted)', letterSpacing: '-0.01em', textAlign: 'center' }}>{it.name}</div>
                 )}
-                <div style={{ fontSize: 10.5, color: 'var(--ip-muted)', fontFamily: 'var(--font-mono)', letterSpacing: '0.08em', textAlign: 'center' }}>{it.name}</div>
               </div>
             ))}
           </div>
