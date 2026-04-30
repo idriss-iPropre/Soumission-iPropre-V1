@@ -11,8 +11,7 @@ const ANNEXES = {
       { label: 'Garantie Civile 5 000 000$', file: 'assets/annexes/assurance-5M.png', kind: 'image' },
       { label: 'Commentaires clients', file: 'assets/annexes/commentaires-clients.pdf' },
       { label: 'Éthique iPropre', file: 'assets/annexes/ethique-ipropre.pdf' },
-      { label: 'Exemples céramique', file: 'assets/annexes/ceramique.pdf' },
-      { label: 'Contrat complet', file: 'assets/annexes/contrat.pdf' },
+
     ],
   },
   employe: {
@@ -29,7 +28,43 @@ const ANNEXES = {
   },
 };
 
+const VIDEO_SRC = 'assets/videos/organisation.mp4'; // Remplacer par le fichier local une fois disponible
+const DRIVE_EMBED = 'https://drive.google.com/file/d/18MVhTydbud2ClCkEalQ09nxTLLinJShk/preview';
+
 function AnnexesPage() {
+  const videoRef = React.useRef(null);
+  const timerRef = React.useRef(null);
+  const [videoReady, setVideoReady] = React.useState(false);
+  const [playing, setPlaying] = React.useState(false);
+  const [muted, setMuted] = React.useState(false);
+
+  React.useEffect(() => {
+    // 3 secondes après l'arrivée sur l'onglet, lecture automatique
+    timerRef.current = setTimeout(() => {
+      const v = videoRef.current;
+      if (!v) return;
+      v.volume = 0.35;
+      v.play().then(() => setPlaying(true)).catch(() => {});
+    }, 3000);
+    return () => {
+      clearTimeout(timerRef.current);
+      if (videoRef.current) videoRef.current.pause();
+    };
+  }, []);
+
+  const togglePlay = () => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (v.paused) { v.play(); setPlaying(true); } else { v.pause(); setPlaying(false); }
+  };
+
+  const toggleMute = () => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.muted = !v.muted;
+    setMuted(v.muted);
+  };
+
   return (
     <div className="page active">
       <div className="page-head">
@@ -86,6 +121,56 @@ function AnnexesPage() {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* ── Vidéo de présentation ── */}
+      <div style={{ marginTop: 32 }}>
+        <div style={{ marginBottom: 14 }}>
+          <span className="eyebrow" style={{ fontSize: 11, letterSpacing: '0.18em' }}>Notre méthode de travail</span>
+          <h2 style={{ margin: '4px 0 0', fontFamily: 'var(--font-serif)', fontSize: 22, fontWeight: 700 }}>
+            Organisation, suivi &amp; communication client
+          </h2>
+        </div>
+        <div style={{ position: 'relative', width: '100%', borderRadius: 16, overflow: 'hidden', background: '#0d0d10', boxShadow: '0 8px 40px rgba(0,0,0,0.18)' }}>
+          <video
+            ref={videoRef}
+            src={VIDEO_SRC}
+            style={{ width: '100%', display: 'block', maxHeight: 520, objectFit: 'contain', background: '#0d0d10' }}
+            onPlay={() => setPlaying(true)}
+            onPause={() => setPlaying(false)}
+            onCanPlay={() => setVideoReady(true)}
+            onError={() => setVideoReady(false)}
+            playsInline
+            preload="metadata"
+          />
+          {/* Overlay controls */}
+          <div style={{
+            position: 'absolute', bottom: 0, left: 0, right: 0,
+            padding: '28px 20px 16px',
+            background: 'linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 100%)',
+            display: 'flex', alignItems: 'center', gap: 12,
+          }}>
+            <button onClick={togglePlay} style={{
+              width: 44, height: 44, borderRadius: '50%', border: 'none',
+              background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(6px)',
+              color: '#fff', cursor: 'pointer', display: 'grid', placeItems: 'center', fontSize: 18,
+            }}>
+              {playing ? '⏸' : '▶'}
+            </button>
+            <button onClick={toggleMute} style={{
+              width: 36, height: 36, borderRadius: '50%', border: 'none',
+              background: 'rgba(255,255,255,0.1)', backdropFilter: 'blur(6px)',
+              color: '#fff', cursor: 'pointer', display: 'grid', placeItems: 'center', fontSize: 15,
+            }}>
+              {muted ? '🔇' : '🔉'}
+            </button>
+            {!videoReady && (
+              <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, fontFamily: 'var(--font-mono)' }}>
+                Fichier vidéo à placer dans <code>assets/videos/organisation.mp4</code>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
