@@ -2,7 +2,7 @@
 
 // Pure function — builds the printable HTML for any state + client form.
 // Exposed globally so the top-level "Offre en PDF" button can call it too.
-function buildPrintableHtml(state, form) {
+function buildPrintableHtml(state, form, initialSnapshot) {
   form = form || {};
   const hiddenPlans = state.hiddenPlans || [];
   const visiblePlans = PLAN_DEFS.map((p, i) => ({ p, i })).filter(({ i }) => !hiddenPlans.includes(i));
@@ -15,24 +15,42 @@ function buildPrintableHtml(state, form) {
     const planColW = `${(60 / Math.max(visiblePlans.length, 1)).toFixed(2)}%`;
     const COLW = { label: '40%', plan: planColW };
 
-    // Detect client modifications (rows with clientAdded: true)
+    // Detect client modifications (rows with clientAdded: true OR cell values different from snapshot)
     const hasClientAdditions = state.sections.some(sec => sec.rows.some(r => r.clientAdded));
+    const hasClientEdits = !!initialSnapshot && state.sections.some((sec, si) => sec.rows.some((r, ri) => {
+      if (r.clientAdded) return false;
+      const snap = initialSnapshot.sections?.[si]?.rows?.[ri];
+      if (!snap) return false;
+      return r.v.some((v, pi) => v !== snap.v?.[pi]) || r.label !== snap.label;
+    }));
+    const hasClientChanges = hasClientAdditions || hasClientEdits;
 
-    const sectionsHtml = state.sections.map(sec => {
-      const rows = sec.rows.map(r => {
+    const sectionsHtml = state.sections.map((sec, secIdx) => {
+      const rows = sec.rows.map((r, rowIdx) => {
         const isAdded = !!r.clientAdded;
+        const snap = !isAdded && initialSnapshot ? initialSnapshot.sections?.[secIdx]?.rows?.[rowIdx] : null;
+        const labelEdited = !!snap && r.label !== snap.label;
         const labelHtml = isAdded
           ? `<span style="display:inline-block;padding:2px 7px;background:#F4A51C;color:#fff;font-size:9px;font-family:'JetBrains Mono',monospace;letter-spacing:0.1em;text-transform:uppercase;border-radius:999px;margin-right:6px;vertical-align:middle">Ajouté</span>${esc(r.label) || '<span style="color:#bbb">—</span>'}`
-          : `${esc(r.label) || '<span style="color:#bbb">—</span>'}`;
+          : labelEdited
+            ? `<span style="background:rgba(244,165,28,0.18);padding:2px 5px;border-radius:3px;border-bottom:1.5px solid #F4A51C">${esc(r.label) || '<span style="color:#bbb">—</span>'}</span>`
+            : `${esc(r.label) || '<span style="color:#bbb">—</span>'}`;
+        const rowEdited = labelEdited || (snap && r.v.some((v, pi) => v !== snap.v?.[pi]));
         return `
-        <tr${isAdded ? ' style="background:rgba(244,165,28,0.05)"' : ''}>
+        <tr${isAdded ? ' style="background:rgba(244,165,28,0.05)"' : rowEdited ? ' style="background:rgba(244,165,28,0.04)"' : ''}>
           <td style="padding:9px 12px;border-bottom:1px solid #ededed;width:${COLW.label};vertical-align:middle;font-weight:500">${labelHtml}</td>
           ${visiblePlans.map(({ p, i: pi }) => {
             const isSel = pi === state.selectedPlan;
             const val = r.v[pi] || '—';
-            // Empty values for client-added rows ⇒ red emphasis
             const isEmptyAdded = isAdded && !r.v[pi];
-            return `<td style="padding:9px 12px;border-bottom:1px solid #ededed;text-align:center;width:${COLW.plan};vertical-align:middle;${isEmptyAdded?'color:#c0392b;font-style:italic':isSel?'background:#FFF4DA;font-weight:600;color:#111':'color:#555'}">${isEmptyAdded ? 'À discuter' : esc(val)}</td>`;
+            const cellEdited = !isAdded && snap && val !== (snap.v?.[pi] || '—') && (snap.v?.[pi] !== undefined);
+            const cellStyle = isEmptyAdded
+              ? 'color:#c0392b;font-style:italic'
+              : cellEdited
+                ? (isSel ? 'background:linear-gradient(180deg,#FFF4DA 0%,#FFE7B0 100%);font-weight:700;color:#7c5300;border-left:2px solid #F4A51C;border-right:2px solid #F4A51C' : 'background:rgba(244,165,28,0.18);font-weight:600;color:#7c5300')
+                : (isSel ? 'background:#FFF4DA;font-weight:600;color:#111' : 'color:#555');
+            const editBadge = cellEdited ? '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#F4A51C;margin-left:5px;vertical-align:middle" title="Modifié"></span>' : '';
+            return `<td style="padding:9px 12px;border-bottom:1px solid #ededed;text-align:center;width:${COLW.plan};vertical-align:middle;${cellStyle}">${isEmptyAdded ? 'À discuter' : esc(val)}${editBadge}</td>`;
           }).join('')}
         </tr>`;
       }).join('');
@@ -144,12 +162,16 @@ function buildPrintableHtml(state, form) {
     <div style="grid-column:1/-1"><div class="lab">Adresse du service</div><div class="val">${esc(form.address) || '—'}</div></div>
   </div>
 
-  ${hasClientAdditions ? `
+  ${hasClientChanges ? `
   <div style="margin:14px 0 18px;padding:14px 16px;background:#fff5f3;border:1.5px solid #e87a6c;border-radius:8px;display:flex;align-items:center;gap:12px;page-break-inside:avoid">
     <div style="width:30px;height:30px;border-radius:7px;background:#c0392b;color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;flex-shrink:0">!</div>
     <div style="flex:1;font-size:12.5px;color:#5a1f15;line-height:1.5">
-      <strong style="font-family:'Playfair Display',serif;font-size:14px;color:#1a0e07">Services modifiés par le client</strong><br/>
-      Cette soumission contient des lignes ajoutées par le client (badges « Ajouté » + tarifs « À confirmer » en rouge). À valider avec iPropre avant signature.
+      <strong style="font-family:'Playfair Display',serif;font-size:14px;color:#1a0e07">Soumission modifiée par le client</strong><br/>
+      ${hasClientAdditions && hasClientEdits
+        ? 'Le client a ajouté des lignes (badges « Ajouté ») <strong>et</strong> modifié des cellules existantes (surlignées en orange, marquées d\'un point ●). À valider avec iPropre avant signature.'
+        : hasClientAdditions
+          ? 'Cette soumission contient des lignes ajoutées par le client (badges « Ajouté » + tarifs « À confirmer » en rouge). À valider avec iPropre avant signature.'
+          : 'Le client a modifié certaines cellules de la soumission originale (surlignées en orange, marquées d\'un point ●). À valider avec iPropre avant signature.'}
     </div>
   </div>` : ''}
 
@@ -253,7 +275,13 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
       ? `Voici les options présentées, votre choix est mis en évidence :\n\n${lines}\n`
       : `Voici les ${visiblePlanIndices.length} options à comparer :\n\n${lines}\n\nFaites-nous savoir laquelle vous préférez — nous sommes là pour en discuter.`;
 
-    return `${form.message}\n\n────────────────────────────────────\n${optionsBlock}\n────────────────────────────────────\n\nPour me répondre directement : idriss@ipropre.ca\n\n(Le PDF détaillé est joint à ce courriel.)`;
+    // Editable client link — the client can change any cell, add lines, then download a PDF.
+    const clientUrl = buildLongUrl(undefined, { editable: true });
+    const linkBlock = clientUrl
+      ? `\n────────────────────────────────────\nVOIR & MODIFIER LA SOUMISSION EN LIGNE :\n${clientUrl}\n\n(Ce lien vous permet d'ajuster les colonnes, ajouter des lignes ou changer de plan ; les cellules modifiées apparaîtront surlignées dans le PDF que vous téléchargerez.)\n`
+      : '';
+
+    return `${form.message}\n\n────────────────────────────────────\n${optionsBlock}${linkBlock}────────────────────────────────────\n\nPour me répondre directement : idriss@ipropre.ca\n\n(Le PDF détaillé est joint à ce courriel.)`;
   };
 
   const buildMailtoUrl = () => {
@@ -317,12 +345,13 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
   // "Copier" twice doesn't create a duplicate entry; sending generates one.
   const [pendingLinkId, setPendingLinkId] = React.useState(() => (window.makeLinkId ? window.makeLinkId() : 'L' + Date.now()));
 
-  const buildLongUrl = (linkIdOverride) => {
+  const buildLongUrl = (linkIdOverride, opts = {}) => {
     if (typeof window.encodeStateToUrl !== 'function') return null;
     const encoded = window.encodeStateToUrl(state, form.clientName || form.company || '');
     if (!encoded) return null;
     const linkId = linkIdOverride || pendingLinkId;
-    return `${location.origin}${location.pathname}?mode=client&data=${encoded}&lid=${linkId}`;
+    const editParam = opts.editable ? '&edit=1' : '';
+    return `${location.origin}${location.pathname}?mode=client&data=${encoded}&lid=${linkId}${editParam}`;
   };
 
   // Record that we sent a link, optionally push to Google Sheets.
@@ -383,34 +412,45 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
   };
 
   const handleCopyClientLink = async () => {
-    const url = buildLongUrl();
+    const url = buildLongUrl(undefined, { editable: true });
     if (!url) { pushToast('Erreur lors de l\'encodage'); return; }
     setShortening(true);
     pushToast('Génération du lien court...');
     const short = await shortenUrl(url);
     setShortening(false);
     if (short) {
-      copyToClipboard(short, `Lien court copié : ${short}`);
+      copyToClipboard(short, `Lien client copié : ${short}`);
       recordSentLink({ url, shortUrl: short });
     } else {
-      copyToClipboard(url, 'Lien long copié (raccourcissement indisponible)');
+      copyToClipboard(url, 'Lien client copié (long format)');
       recordSentLink({ url });
     }
   };
 
   const handleCopyLongLink = () => {
-    const url = buildLongUrl();
+    const url = buildLongUrl(undefined, { editable: true });
     if (!url) { pushToast('Erreur lors de l\'encodage'); return; }
     copyToClipboard(url, 'Lien long copié');
     recordSentLink({ url });
   };
 
   const handleOpenClientPreview = () => {
-    if (typeof window.encodeStateToUrl !== 'function') { pushToast('Erreur : encodeur indisponible'); return; }
-    const encoded = window.encodeStateToUrl(state, form.clientName || form.company || '');
-    if (!encoded) { pushToast('Erreur lors de l\'encodage'); return; }
-    const url = `${location.origin}${location.pathname}?mode=client&data=${encoded}`;
+    const url = buildLongUrl(undefined, { editable: true });
+    if (!url) { pushToast('Erreur : encodeur indisponible'); return; }
     window.open(url, '_blank');
+  };
+
+  const handleCopyReadOnlyLink = async () => {
+    const url = buildLongUrl(undefined, { editable: false });
+    if (!url) { pushToast('Erreur lors de l\'encodage'); return; }
+    setShortening(true);
+    const short = await shortenUrl(url);
+    setShortening(false);
+    if (short) {
+      copyToClipboard(short, `Lien lecture seule copié : ${short}`);
+    } else {
+      copyToClipboard(url, 'Lien lecture seule copié');
+    }
   };
 
   if (sent) {
@@ -509,31 +549,6 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
             </button>
           </div>
 
-          {/* Client preview link */}
-          <div style={{ marginTop: 14, padding: '14px 16px', background: '#fff', border: '1.5px dashed var(--ip-orange)', borderRadius: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-              <div style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--ip-orange)', color: '#fff', display: 'grid', placeItems: 'center' }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontFamily: 'var(--font-serif)', fontSize: 15, fontWeight: 700 }}>Aperçu pour votre client</div>
-                <div style={{ fontSize: 12, color: 'var(--ip-muted)' }}>Copiez un lien que le client peut consulter en lecture seule pour cocher son plan.</div>
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button type="button" className="btn btn-orange" onClick={handleCopyClientLink} style={{ fontSize: 12.5 }} disabled={shortening}>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                {shortening ? 'Génération...' : 'Copier le lien court'}
-              </button>
-              <button type="button" className="btn btn-ghost" onClick={handleOpenClientPreview} style={{ fontSize: 12.5 }}>
-                <Icon.external /> Aperçu de la vue client
-              </button>
-            </div>
-            <div style={{ marginTop: 8, fontSize: 11, color: 'var(--ip-muted)', lineHeight: 1.5 }}>
-              <em>Note :</em> le « lien court » utilise <strong>is.gd</strong> pour générer une URL compacte (type <code>https://is.gd/abc123</code>) facile à coller dans un courriel ou une signature. Si is.gd est indisponible, le lien long sera copié à la place. Toute la soumission est encodée dans le lien — aucun serveur requis.
-            </div>
-          </div>
-
           <div style={{ marginTop: 18, padding: '12px 14px', background: '#fffbf0', borderRadius: 8, border: '1px solid #f5d886', fontSize: 12.5, color: '#6b4a0a', lineHeight: 1.55 }}>
             <strong>À propos de l'envoi :</strong> l'envoi automatique de courriel nécessite un serveur côté iPropre (non disponible dans ce prototype). Le bouton ouvre donc votre application courriel (Outlook, Gmail, Apple Mail…) pré-remplie ; vous joignez simplement le PDF téléchargé avant d'envoyer.
           </div>
@@ -541,38 +556,56 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
 
         {/* Summary */}
         <aside className="card" style={{ overflow: 'hidden', alignSelf: 'start', position: 'sticky', top: 100 }}>
-          {hasSelected ? (
-            <div className={`plan-head ${plan.headCls}`} style={{ padding: '20px 18px', textAlign: 'center' }}>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--ip-ink-2)', marginBottom: 4 }}>Plan sélectionné</div>
-              <div style={{ fontFamily: 'var(--font-serif)', fontSize: 22, fontWeight: 700 }}>{plan.label}</div>
+          {/* Client link panel — primary action of this screen */}
+          <div style={{ padding: '18px 18px 16px', background: 'linear-gradient(180deg, #fff8eb 0%, #fff 100%)', borderBottom: '1px solid var(--ip-line-2)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 10 }}>
+              <div style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--ip-orange)', color: '#fff', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--ip-muted)' }}>Aperçu pour votre client</div>
+                <div style={{ fontFamily: 'var(--font-serif)', fontSize: 17, fontWeight: 700, lineHeight: 1.2 }}>Lien interactif</div>
+              </div>
             </div>
-          ) : (
-            <div style={{ padding: '20px 18px', textAlign: 'center', background: '#f4f6fc', borderBottom: '1px solid #c9d3eb' }}>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#6b7a99', marginBottom: 4 }}>Mode comparatif</div>
-              <div style={{ fontFamily: 'var(--font-serif)', fontSize: 20, fontWeight: 700, color: '#1a2540' }}>{visiblePlanIndices.length} options à comparer</div>
+            <div style={{ fontSize: 11.5, color: 'var(--ip-muted)', lineHeight: 1.5, marginBottom: 10 }}>
+              Le client peut <strong style={{ color: 'var(--ip-ink)' }}>modifier toutes les cellules</strong>, ajouter des lignes ou choisir son plan. Les changements seront <strong style={{ color: '#7c5300' }}>surlignés en orange</strong> dans le PDF.
             </div>
-          )}
-          <div style={{ padding: '18px 20px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <button type="button" className="btn btn-orange" onClick={handleCopyClientLink} style={{ fontSize: 12.5, justifyContent: 'center' }} disabled={shortening}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                {shortening ? 'Génération...' : 'Copier le lien client'}
+              </button>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button type="button" className="btn btn-ghost" onClick={handleOpenClientPreview} style={{ fontSize: 11.5, flex: 1, justifyContent: 'center', padding: '6px 8px' }}>
+                  <Icon.external /> Aperçu
+                </button>
+                <button type="button" className="btn btn-ghost" onClick={handleCopyReadOnlyLink} style={{ fontSize: 11.5, flex: 1, justifyContent: 'center', padding: '6px 8px' }} title="Lien lecture seule (sans édition)">
+                  Lecture seule
+                </button>
+              </div>
+            </div>
+          </div>
+          <div style={{ padding: '14px 20px' }}>
             {hasSelected ? (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '10px 0', borderBottom: '1px solid var(--ip-line-2)' }}>
-                <span style={{ fontSize: 13, color: 'var(--ip-muted)' }}>Prix mensuel</span>
-                <span style={{ fontFamily: 'var(--font-serif)', fontSize: 26, fontWeight: 700 }}>{price || '—'} $</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '8px 0', borderBottom: '1px solid var(--ip-line-2)' }}>
+                <span style={{ fontSize: 12, color: 'var(--ip-muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>{plan.label}</span>
+                <span style={{ fontFamily: 'var(--font-serif)', fontSize: 22, fontWeight: 700 }}>{price || '—'} $</span>
               </div>
             ) : (
-              <div style={{ padding: '4px 0 10px', borderBottom: '1px solid var(--ip-line-2)' }}>
+              <div style={{ padding: '4px 0 8px', borderBottom: '1px solid var(--ip-line-2)' }}>
                 {visiblePlanIndices.map(i => (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: 13 }}>
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 12.5 }}>
                     <span style={{ color: 'var(--ip-muted)' }}>{PLAN_DEFS[i].label}</span>
                     <span style={{ fontWeight: 600 }}>{state.prices[i] || '—'} $</span>
                   </div>
                 ))}
               </div>
             )}
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--ip-line-2)', fontSize: 13 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--ip-line-2)', fontSize: 12.5 }}>
               <span style={{ color: 'var(--ip-muted)' }}>Sections incluses</span>
               <span style={{ fontWeight: 600 }}>{state.sections.length}</span>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', fontSize: 13 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', fontSize: 12.5 }}>
               <span style={{ color: 'var(--ip-muted)' }}>Lignes totales</span>
               <span style={{ fontWeight: 600 }}>{state.sections.reduce((a, s) => a + s.rows.length, 0)}</span>
             </div>

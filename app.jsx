@@ -42,13 +42,108 @@ function detectClientMode() {
   const decoded = decodeStateFromUrl(data);
   if (!decoded) return null;
   const linkId = params.get('lid') || null;
-  return { ...decoded, linkId };
+  const editable = params.get('edit') === '1';
+  return { ...decoded, linkId, editable };
+}
+
+// Service icons keyed by section id — replaces the iPropre logo next to each
+// service section in the Soumission table.
+const SECTION_ICONS = {
+  garantie: (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+      <path d="M9 12l2 2 4-4"/>
+    </svg>
+  ),
+  entretien: (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9.5 2L7 8l-3 1 4 3-1 5 5-3 5 3-1-5 4-3-3-1-2.5-6z" opacity="0.4"/>
+      <path d="M14 14l6 6"/>
+      <circle cx="9" cy="9" r="3"/>
+    </svg>
+  ),
+  vitre: (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="2"/>
+      <line x1="12" y1="3" x2="12" y2="21"/>
+      <line x1="3" y1="12" x2="21" y2="12"/>
+      <path d="M6 7l3 3" opacity="0.6"/>
+    </svg>
+  ),
+  tapis: (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="6" width="18" height="12" rx="1"/>
+      <path d="M3 9h18M3 15h18" opacity="0.5"/>
+      <path d="M7 6v12M12 6v12M17 6v12" opacity="0.4"/>
+    </svg>
+  ),
+  plancher: (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 21h18"/>
+      <path d="M5 21l2-10h10l2 10"/>
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" opacity="0.5"/>
+      <circle cx="12" cy="16" r="0.8" fill="currentColor"/>
+    </svg>
+  ),
+  travaux: (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+    </svg>
+  ),
+};
+
+function SectionIcon({ id, color }) {
+  const icon = SECTION_ICONS[id] || (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="9"/>
+      <path d="M12 7v5l3 2"/>
+    </svg>
+  );
+  return (
+    <div style={{
+      width: 36, height: 36, borderRadius: 9,
+      background: 'linear-gradient(135deg, rgba(244,165,28,0.15), rgba(244,165,28,0.05))',
+      color: color || 'var(--ip-orange)',
+      display: 'grid', placeItems: 'center', flexShrink: 0,
+    }}>
+      {icon}
+    </div>
+  );
+}
+
+window.SectionIcon = SectionIcon;
+window.SECTION_ICONS = SECTION_ICONS;
+
+function UserMenuItem({ onClick, icon, label, badge, badgeColor, trailing, danger }) {
+  const [hover, setHover] = React.useState(false);
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        all: 'unset', display: 'flex', alignItems: 'center', gap: 10,
+        padding: '9px 12px', borderRadius: 8, cursor: 'pointer',
+        fontSize: 13, width: '100%', boxSizing: 'border-box',
+        background: hover ? (danger ? 'rgba(220,53,69,0.08)' : 'var(--ip-line-2)') : 'transparent',
+        color: danger ? '#c0392b' : 'var(--ip-ink)',
+      }}
+    >
+      <span style={{ color: danger ? '#c0392b' : 'var(--ip-muted)', display: 'inline-flex' }}>{icon}</span>
+      <span style={{ flex: 1 }}>{label}</span>
+      {badge != null && (
+        <span style={{ padding: '1px 7px', background: badgeColor || 'var(--ip-orange)', color: '#fff', borderRadius: 999, fontSize: 10.5, fontFamily: 'var(--font-mono)' }}>{badge}</span>
+      )}
+      {trailing}
+    </button>
+  );
 }
 
 function App() {
   // Detect client mode FIRST (read-only shared-link view)
   const clientPayload = React.useMemo(() => detectClientMode(), []);
   const clientMode = !!clientPayload;
+  const clientEditable = !!clientPayload?.editable;
   const initialClientState = clientPayload?.state || null;
   const clientLinkId = clientPayload?.linkId || null;
   // If client mode + linkId is revoked locally → show revoked screen instead of soumission
@@ -168,7 +263,7 @@ function App() {
     // PDF generation + Drive upload — awaited so we can cache the URL.
     if (window.pdfTools && window.repo && window.repo.Pdfs && typeof buildPrintableHtml === 'function') {
       try {
-        const html = buildPrintableHtml(state, form);
+        const html = buildPrintableHtml(state, form, initialSnapshot);
         const filename = window.pdfTools.buildPdfFilename({
           soumissionName: savedItem.name,
           clientName: form.clientName || form.company,
@@ -298,7 +393,7 @@ function App() {
       setTab('envoi');
       return;
     }
-    const html = buildPrintableHtml(state, form);
+    const html = buildPrintableHtml(state, form, initialSnapshot);
     const w = window.open('', '_blank');
     if (!w) { toastFn('D\u00e9bloquer les pop-ups pour le PDF'); return; }
     w.document.open(); w.document.write(html); w.document.close();
@@ -358,6 +453,16 @@ function App() {
     );
   }
 
+  const [userMenuOpen, setUserMenuOpen] = React.useState(false);
+  React.useEffect(() => {
+    if (!userMenuOpen) return;
+    const onDown = (e) => {
+      if (!e.target.closest || !e.target.closest('[data-user-menu]')) setUserMenuOpen(false);
+    };
+    window.addEventListener('mousedown', onDown);
+    return () => window.removeEventListener('mousedown', onDown);
+  }, [userMenuOpen]);
+
   return (
     <React.Fragment>
       {/* Top bar */}
@@ -367,7 +472,7 @@ function App() {
             <BrandMark size={40} />
             <div>
               <div className="name">i<em>Propre</em></div>
-              <div className="tag">Soumission interactive</div>
+              <div className="tag" style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.16em', color: 'var(--ip-muted)', marginTop: 2 }}>Soumission</div>
             </div>
           </div>
           <nav className="nav-tabs">
@@ -382,46 +487,93 @@ function App() {
               </button>
             ))}
           </nav>
-          <div className="topbar-actions" style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div className="topbar-actions" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             {!clientMode && (
-              <React.Fragment>
-                <button className="btn btn-ghost" onClick={handleNewSoumission} title="Démarrer une nouvelle soumission" style={{ padding: '6px 12px', fontSize: 12.5 }}>
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                  Nouvelle
+              <div className="btn-pair" style={{ display: 'inline-flex', alignItems: 'stretch', gap: 6 }}>
+                <button onClick={handleNewSoumission} title="Démarrer une nouvelle soumission" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, fontSize: 16, border: 'none', borderRadius: 8, background: 'var(--ip-orange)', color: '#fff', cursor: 'pointer', fontWeight: 600 }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                 </button>
-                <button className="btn btn-ghost" onClick={handleQuickSave} title="Enregistrer cette soumission" style={{ padding: '6px 12px', fontSize: 12.5 }}>
+                <button onClick={handleQuickSave} title="Enregistrer cette soumission" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 12px', fontSize: 12.5, border: '1px solid var(--ip-line)', borderRadius: 8, background: '#fff', cursor: 'pointer', color: 'var(--ip-ink)', fontWeight: isDirty ? 600 : 400, height: 32, boxSizing: 'border-box' }}>
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
                   Enregistrer
+                  {isDirty && <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--ip-orange)', marginLeft: 2 }} />}
                 </button>
-                <button className="btn btn-ghost" onClick={() => setShowSavedModal(true)} title="Mes soumissions enregistr&#233;es" style={{ padding: '6px 12px', fontSize: 12.5 }}>
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-                  Mes soumissions {store.list.length > 0 && <span style={{ display: 'inline-block', marginLeft: 4, padding: '1px 6px', background: 'var(--ip-orange)', color: '#fff', borderRadius: 999, fontSize: 10, fontFamily: 'var(--font-mono)' }}>{store.list.length}</span>}
-                </button>
-                {sentLinks && (
-                  <button className="btn btn-ghost" onClick={() => setShowLinksModal(true)} title="Liens envoyés aux clients" style={{ padding: '6px 12px', fontSize: 12.5 }}>
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-                    Liens {sentLinks.links.filter(l => !l.revoked).length > 0 && <span style={{ display: 'inline-block', marginLeft: 4, padding: '1px 6px', background: '#2c8a4a', color: '#fff', borderRadius: 999, fontSize: 10, fontFamily: 'var(--font-mono)' }}>{sentLinks.links.filter(l => !l.revoked).length}</span>}
-                  </button>
-                )}
-                {gsheet && (
-                  <button className="btn btn-ghost" onClick={() => setShowGsheetModal(true)} title="Connexion Google Sheets" style={{ padding: '6px 12px', fontSize: 12.5, color: gsheet.url ? '#0F9D58' : undefined, borderColor: gsheet.url ? 'rgba(15,157,88,0.3)' : undefined }}>
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/></svg>
-                    Sheets {gsheet.url && <span style={{ display: 'inline-block', marginLeft: 4, width: 6, height: 6, background: '#0F9D58', borderRadius: '50%' }} />}
-                  </button>
-                )}
-                <button className="btn btn-ghost" onClick={() => { logout(); toastFn('Déconnecté'); }} title="Se déconnecter" style={{ padding: '6px 10px', fontSize: 12.5, color: 'var(--ip-muted)' }}>
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-                </button>
-              </React.Fragment>
+              </div>
             )}
           </div>
-          <div className="client-badge">
-            <div className="avatar">{clientMode ? 'V' : 'IP'}</div>
-            <div className="meta">
-              <div className="n">{clientMode ? (clientPayload?.clientName || 'Vous') : 'Idriss Sassi'}</div>
-              <div className="d">{clientMode ? 'Soumission iPropre' : 'Pr\u00e9sident · Laval, QC'}</div>
+          {!clientMode ? (
+            <div data-user-menu style={{ position: 'relative' }}>
+              <button
+                onClick={() => setUserMenuOpen(o => !o)}
+                style={{
+                  all: 'unset', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '4px 12px 4px 4px',
+                  border: '1px solid var(--ip-line)', borderRadius: 999, background: '#fff',
+                  fontSize: 13,
+                }}
+                aria-expanded={userMenuOpen}
+                title="Mon compte"
+              >
+                <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--ip-orange)', color: '#fff', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                </div>
+                <div className="meta">
+                  <div className="n" style={{ fontWeight: 600, fontSize: 12.5, lineHeight: 1.15 }}>Idriss Sassi</div>
+                  <div className="d" style={{ fontSize: 11, color: 'var(--ip-muted)' }}>Président</div>
+                </div>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 2, color: 'var(--ip-muted)', transform: userMenuOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.18s' }}><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              {userMenuOpen && (
+                <div style={{
+                  position: 'absolute', top: 'calc(100% + 8px)', right: 0, zIndex: 60,
+                  background: '#fff', border: '1px solid var(--ip-line)', borderRadius: 12,
+                  boxShadow: '0 12px 32px rgba(0,0,0,0.12)', minWidth: 240, overflow: 'hidden',
+                  padding: 4,
+                }}>
+                  <UserMenuItem
+                    onClick={() => { setShowSavedModal(true); setUserMenuOpen(false); }}
+                    icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>}
+                    label="Mes soumissions"
+                    badge={store.list.length > 0 ? store.list.length : null}
+                  />
+                  {sentLinks && (
+                    <UserMenuItem
+                      onClick={() => { setShowLinksModal(true); setUserMenuOpen(false); }}
+                      icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>}
+                      label="Liens envoyés"
+                      badge={sentLinks.links.filter(l => !l.revoked).length || null}
+                      badgeColor="#2c8a4a"
+                    />
+                  )}
+                  {gsheet && (
+                    <UserMenuItem
+                      onClick={() => { setShowGsheetModal(true); setUserMenuOpen(false); }}
+                      icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/></svg>}
+                      label="Google Sheets"
+                      trailing={gsheet.url ? <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#0F9D58', display: 'inline-block' }} /> : null}
+                    />
+                  )}
+                  <div style={{ height: 1, background: 'var(--ip-line-2)', margin: '4px 0' }} />
+                  <UserMenuItem
+                    onClick={() => { logout(); toastFn('Déconnecté'); setUserMenuOpen(false); }}
+                    icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>}
+                    label="Se déconnecter"
+                    danger
+                  />
+                </div>
+              )}
             </div>
-          </div>
+          ) : (
+            <div className="client-badge" style={{ borderRadius: 999 }}>
+              <div className="avatar" style={{ borderRadius: '50%' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              </div>
+              <div className="meta">
+                <div className="n">{clientPayload?.clientName || 'Vous'}</div>
+                <div className="d">Soumission iPropre</div>
+              </div>
+            </div>
+          )}
         </div>
       </header>
 
@@ -437,14 +589,16 @@ function App() {
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
             </div>
             <div style={{ flex: 1, lineHeight: 1.5 }}>
-              <strong style={{ fontFamily: 'var(--font-serif)', fontSize: 15, color: '#3d2a05' }}>Vous consultez la soumission préparée par iPropre.</strong><br/>
-              Cochez votre plan préféré et téléchargez le PDF pour le confirmer. Vous pouvez aussi ajouter des services à demander.
-              Pour toute question : <a href="mailto:idriss@ipropre.ca" style={{ color: '#7c5300', textDecoration: 'underline', fontWeight: 600 }}>idriss@ipropre.ca</a>
+              <strong style={{ fontFamily: 'var(--font-serif)', fontSize: 15, color: '#3d2a05' }}>{clientEditable ? 'Vous pouvez modifier cette soumission préparée par iPropre.' : 'Vous consultez la soumission préparée par iPropre.'}</strong><br/>
+              {clientEditable
+                ? <React.Fragment>Modifiez n'importe quelle cellule, ajoutez ou retirez des lignes, puis téléchargez le PDF pour confirmer. Les cellules modifiées seront <strong style={{ color: '#7c5300' }}>surlignées en orange</strong> dans le document.</React.Fragment>
+                : <React.Fragment>Cochez votre plan préféré et téléchargez le PDF pour le confirmer. Vous pouvez aussi ajouter des services à demander.</React.Fragment>}
+              {' '}Pour toute question : <a href="mailto:idriss@ipropre.ca" style={{ color: '#7c5300', textDecoration: 'underline', fontWeight: 600 }}>idriss@ipropre.ca</a>
             </div>
           </div>
         )}
         {tab === 'presentation' && <PresentationPage />}
-        {tab === 'soumission' && <SoumissionPage state={state} setState={setState} pushToast={toastFn} history={history} undo={undo} future={future} redo={redo} clientMode={clientMode} initialSnapshot={initialSnapshot} />}
+        {tab === 'soumission' && <SoumissionPage state={state} setState={setState} pushToast={toastFn} history={history} undo={undo} future={future} redo={redo} clientMode={clientMode} clientEditable={clientEditable} initialSnapshot={initialSnapshot} />}
         {tab === 'galerie' && <GaleriePage />}
         {tab === 'annexes' && <AnnexesPage />}
         {tab === 'envoi' && (

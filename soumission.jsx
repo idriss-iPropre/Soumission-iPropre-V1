@@ -86,16 +86,19 @@ const DEFAULT_SECTIONS = [
 const PLAN_DEFS = [
   { key: 0, label: 'Devis initial', sub: 'Votre base', headCls: 'initial', colCls: 'col-initial' },
   { key: 1, label: 'Offre iPropre', sub: 'Recommandé',  headCls: 'offre',   colCls: 'col-offre', ribbon: 'Recommandé' },
-  { key: 2, label: 'VIP Tout inclus', sub: 'Premium',    headCls: 'vip',     colCls: 'col-vip' },
+  { key: 2, label: 'VIP', sub: 'Premium',    headCls: 'vip',     colCls: 'col-vip' },
 ];
 
-function SoumissionPage({ state, setState, pushToast, history, undo, future, redo, clientMode = false, initialSnapshot = null }) {
+function SoumissionPage({ state, setState, pushToast, history, undo, future, redo, clientMode = false, clientEditable = false, initialSnapshot = null }) {
   const { sections, prices, selectedPlan } = state;
   const hiddenPlans = state.hiddenPlans || [];
   const visiblePlans = PLAN_DEFS.map((p, i) => ({ p, i })).filter(({ i }) => !hiddenPlans.includes(i));
-  const ro = clientMode; // read-only flag, terse alias
+  const ro = clientMode; // hide vendor-only chrome (undo/redo, hide-plan, 3-dot menus, add-section)
+  const roCells = clientMode && !clientEditable; // cell-level read-only — false in edit mode
   const visibleCount = visiblePlans.length;
-  const gridTpl = `minmax(240px, 1.6fr) repeat(${Math.max(visibleCount, 1)}, 1fr)`;
+  // Match the table layout below: first col = 44%, plan cols share 56% equally.
+  const planFr = visibleCount > 0 ? 56 / visibleCount : 56;
+  const gridTpl = `44% repeat(${Math.max(visibleCount, 1)}, 1fr)`;
   const [openMenu, setOpenMenu] = React.useState(null); // plan index of open dot-menu
   const [collapsed, setCollapsed] = React.useState({});
 
@@ -364,10 +367,8 @@ function SoumissionPage({ state, setState, pushToast, history, undo, future, red
             >
               <Icon.chev size={14} />
             </button>
-            <div style={{ width: 30, height: 30, borderRadius: 8, background: 'var(--ip-bg)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-              <BrandMark size={20} />
-            </div>
-            {sec.isCustom && !ro ? (
+            <SectionIcon id={sec.id} />
+            {sec.isCustom && !roCells ? (
               <input
                 className="txt-input"
                 value={sec.title}
@@ -395,7 +396,7 @@ function SoumissionPage({ state, setState, pushToast, history, undo, future, red
             <thead>
               <tr>
                 <th style={{ width: '44%' }}>Prestation</th>
-                {visiblePlans.map(({ p }) => <th key={p.key} style={{ width: `${Math.min(48 / visibleCount, 22)}%` }}>{p.label}</th>)}
+                {visiblePlans.map(({ p }) => <th key={p.key} style={{ width: `${Math.min(48 / visibleCount, 22)}%`, textAlign: 'center' }}>{p.label}</th>)}
                 {!ro && <th style={{ width: 36 }}></th>}
               </tr>
             </thead>
@@ -403,7 +404,7 @@ function SoumissionPage({ state, setState, pushToast, history, undo, future, red
               {sec.rows.map((row, rowIdx) => (
                 <tr key={rowIdx} style={row.clientAdded ? { background: 'rgba(244,165,28,0.05)' } : undefined}>
                   <td style={{ paddingRight: 18, position: 'relative' }}>
-                    {ro && !row.clientAdded ? (
+                    {roCells && !row.clientAdded ? (
                       <div style={{ padding: '6px 10px 6px 6px', fontWeight: 500, lineHeight: 1.4, color: row.label ? 'var(--ip-ink)' : 'var(--ip-muted)' }}>
                         {row.label || <em style={{ color: '#bbb' }}>(sans nom)</em>}
                       </div>
@@ -420,9 +421,14 @@ function SoumissionPage({ state, setState, pushToast, history, undo, future, red
                       </div>
                     )}
                   </td>
-                  {visiblePlans.map(({ p, i: pi }) => (
-                    <td key={p.key} data-plan={p.label}>
-                      {ro && !row.clientAdded ? (
+                  {visiblePlans.map(({ p, i: pi }) => {
+                    // Detect cell-level modification vs the snapshot the client received.
+                    const snapRow = clientEditable && initialSnapshot && initialSnapshot.sections?.[secIdx]?.rows?.[rowIdx];
+                    const snapVal = snapRow ? snapRow.v?.[pi] : null;
+                    const cellModified = clientEditable && !row.clientAdded && snapRow && snapVal !== row.v[pi];
+                    return (
+                    <td key={p.key} data-plan={p.label} data-modified={cellModified ? '1' : undefined} style={{ textAlign: 'center', background: cellModified ? 'rgba(244,165,28,0.10)' : undefined }}>
+                      {roCells && !row.clientAdded ? (
                         <div className={p.colCls} style={{ padding: '8px 10px', textAlign: 'center', fontSize: 13.5, color: row.v[pi] ? 'var(--ip-ink)' : 'var(--ip-muted)', fontWeight: row.v[pi] ? 500 : 400 }}>
                           {row.v[pi] || '—'}
                         </div>
@@ -435,7 +441,8 @@ function SoumissionPage({ state, setState, pushToast, history, undo, future, red
                         />
                       )}
                     </td>
-                  ))}
+                    );
+                  })}
                   {!ro && (
                   <td className="row-delete">
                     <button className="btn-icon danger" title="Supprimer la ligne" onClick={() => removeRow(secIdx, rowIdx)}>
@@ -479,7 +486,7 @@ function SoumissionPage({ state, setState, pushToast, history, undo, future, red
               padding: '16px 14px', outline: selectedPlan === planIdx ? '3px solid var(--ip-ink)' : 'none', outlineOffset: -3,
             }}>
               <span style={{ fontFamily: 'var(--font-serif)', fontSize: 13, color: 'var(--ip-muted)' }}>$</span>
-              {ro ? (
+              {roCells ? (
                 <div style={{
                   width: 110, textAlign: 'right',
                   fontFamily: 'var(--font-serif)', fontSize: 26, fontWeight: 700,
