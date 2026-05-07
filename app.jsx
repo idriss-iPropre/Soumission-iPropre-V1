@@ -186,6 +186,44 @@ function App() {
   // Captured when Enregistrer succeeds; reused by Envoi (no re-upload).
   const [lastPdfUrl, setLastPdfUrl] = React.useState('');
 
+  // ---------- Soumission templates (vendor-side, persisted in localStorage) ----------
+  const TEMPLATES_KEY = 'ipropre.templates.v1';
+  const [templatesList, setTemplatesList] = React.useState(() => {
+    if (clientMode) return [];
+    try {
+      const raw = localStorage.getItem(TEMPLATES_KEY);
+      if (!raw) return [];
+      const arr = JSON.parse(raw);
+      return Array.isArray(arr) ? arr : [];
+    } catch (e) { return []; }
+  });
+  const persistTemplates = React.useCallback((next) => {
+    try { localStorage.setItem(TEMPLATES_KEY, JSON.stringify(next)); } catch (e) {}
+  }, []);
+  const templates = React.useMemo(() => clientMode ? null : ({
+    list: templatesList,
+    save: (snapshot, name) => {
+      const tpl = {
+        id: 'tpl_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        name: name || 'Sans titre',
+        createdAt: new Date().toISOString(),
+        state: JSON.parse(JSON.stringify(snapshot)),
+      };
+      setTemplatesList(prev => {
+        const next = [tpl, ...prev];
+        persistTemplates(next);
+        return next;
+      });
+    },
+    remove: (id) => {
+      setTemplatesList(prev => {
+        const next = prev.filter(t => t.id !== id);
+        persistTemplates(next);
+        return next;
+      });
+    },
+  }), [clientMode, templatesList, persistTemplates]);
+
   const setState = React.useCallback((updater) => {
     setStateRaw(prev => {
       const next = typeof updater === 'function' ? updater(prev) : updater;
@@ -598,7 +636,7 @@ function App() {
           </div>
         )}
         {tab === 'presentation' && <PresentationPage />}
-        {tab === 'soumission' && <SoumissionPage state={state} setState={setState} pushToast={toastFn} history={history} undo={undo} future={future} redo={redo} clientMode={clientMode} clientEditable={clientEditable} initialSnapshot={initialSnapshot} />}
+        {tab === 'soumission' && <SoumissionPage state={state} setState={setState} pushToast={toastFn} history={history} undo={undo} future={future} redo={redo} clientMode={clientMode} clientEditable={clientEditable} initialSnapshot={initialSnapshot} templates={templates} />}
         {tab === 'galerie' && <GaleriePage />}
         {tab === 'annexes' && <AnnexesPage />}
         {tab === 'envoi' && (

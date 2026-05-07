@@ -571,18 +571,19 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
               Le client peut <strong style={{ color: 'var(--ip-ink)' }}>modifier toutes les cellules</strong>, ajouter des lignes ou choisir son plan. Les changements seront <strong style={{ color: '#7c5300' }}>surlignés en orange</strong> dans le PDF.
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <button type="button" className="btn btn-orange" onClick={handleCopyClientLink} style={{ fontSize: 12.5, justifyContent: 'center' }} disabled={shortening}>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                {shortening ? 'Génération...' : 'Copier le lien client'}
-              </button>
               <div style={{ display: 'flex', gap: 6 }}>
-                <button type="button" className="btn btn-ghost" onClick={handleOpenClientPreview} style={{ fontSize: 11.5, flex: 1, justifyContent: 'center', padding: '6px 8px' }}>
-                  <Icon.external /> Aperçu
+                <button type="button" className="btn btn-orange" onClick={handleCopyClientLink} style={{ fontSize: 11.5, flex: 1, justifyContent: 'center', padding: '8px 8px' }} disabled={shortening} title="Lien éditable — le client peut modifier les cellules">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  {shortening ? 'Génération...' : 'Liens client formulaire'}
                 </button>
-                <button type="button" className="btn btn-ghost" onClick={handleCopyReadOnlyLink} style={{ fontSize: 11.5, flex: 1, justifyContent: 'center', padding: '6px 8px' }} title="Lien lecture seule (sans édition)">
-                  Lecture seule
+                <button type="button" className="btn btn-ghost" onClick={handleCopyReadOnlyLink} style={{ fontSize: 11.5, flex: 1, justifyContent: 'center', padding: '8px 8px', background: '#fff' }} disabled={shortening} title="Lien lecture seule (sans édition)">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  Liens client lecture seule
                 </button>
               </div>
+              <button type="button" className="btn btn-ghost" onClick={handleOpenClientPreview} style={{ fontSize: 11, justifyContent: 'center', padding: '5px 8px' }}>
+                <Icon.external /> Aperçu dans un nouvel onglet
+              </button>
             </div>
           </div>
           <div style={{ padding: '14px 20px' }}>
@@ -608,15 +609,6 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', fontSize: 12.5 }}>
               <span style={{ color: 'var(--ip-muted)' }}>Lignes totales</span>
               <span style={{ fontWeight: 600 }}>{state.sections.reduce((a, s) => a + s.rows.length, 0)}</span>
-            </div>
-          </div>
-          <div style={{ padding: '14px 20px', borderTop: '1px solid var(--ip-line)', background: 'var(--ip-bg)' }}>
-            <div style={{ fontSize: 11.5, color: 'var(--ip-muted)', fontFamily: 'var(--font-mono)', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 8 }}>Annexes jointes</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              <span className="pill orange"><Icon.doc size={11}/> Contrat</span>
-              <span className="pill"><Icon.doc size={11}/> 70 points</span>
-              <span className="pill"><Icon.doc size={11}/> Assurance 5 M$</span>
-              <span className="pill">+ autres</span>
             </div>
           </div>
         </aside>
