@@ -467,30 +467,32 @@ function App() {
       return;
     }
     const html = buildPrintableHtml(state, form, initialSnapshot);
-    // Word/Google Docs expect a full HTML document with xmlns:o/xmlns:w attrs.
-    // We strip the existing <html> wrapper if present, then re-wrap.
-    const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-    const styleMatch = html.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
-    const innerBody = bodyMatch ? bodyMatch[1] : html;
-    const styles = styleMatch ? styleMatch[1] : '';
-    const docHtml =
-      '<html xmlns:o="urn:schemas-microsoft-com:office:office" ' +
-      'xmlns:w="urn:schemas-microsoft-com:office:word" ' +
-      'xmlns="http://www.w3.org/TR/REC-html40">' +
-      '<head><meta charset="utf-8"><title>Soumission iPropre</title>' +
-      '<style>' + styles + '\n@page WordSection1 { size: 8.5in 11in; margin: 0.6in; }\n' +
-      'div.WordSection1 { page: WordSection1; }</style></head>' +
-      '<body><div class="WordSection1">' + innerBody + '</div></body></html>';
     const safeName = (form.company || form.clientName || 'client').replace(/[\\/:*?"<>|]/g, '').trim().slice(0, 60) || 'client';
     const stamp = new Date().toLocaleDateString('fr-CA').replace(/-/g, '');
-    const filename = `Soumission iPropre - ${safeName} - ${stamp}.doc`;
-    const blob = new Blob(['\ufeff' + docHtml], { type: 'application/msword' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = filename;
-    document.body.appendChild(a); a.click();
-    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
-    toastFn('Word t\u00e9l\u00e9charg\u00e9 \u2014 ouvrez avec Word ou Google Docs');
+    const baseName = `Soumission iPropre - ${safeName} - ${stamp}`;
+
+    if (!(window.repo && window.repo.Docx && gsheet && gsheet.url)) {
+      toastFn('Configurez Google Sheets dans Param\u00e8tres pour utiliser le t\u00e9l\u00e9chargement Word');
+      return;
+    }
+
+    toastFn('Conversion en cours\u2026');
+    window.repo.Docx.upload({
+      soumissionId: store.currentId || '',
+      html,
+      nomFichier: baseName,
+      label: currentName || '',
+      trigger: 'manual',
+    }).then((res) => {
+      const url = res && (res.docxUrl || res.docUrl);
+      if (!url) { toastFn('\u00c9chec de la conversion Word'); return; }
+      // Open the Google Doc (editable) in a new tab — user can File > T\u00e9l\u00e9charger > .docx
+      window.open(res.docUrl || url, '_blank');
+      toastFn('\u2713 Soumission sur Drive (Google Docs + .docx)');
+    }).catch((err) => {
+      console.error('Docx upload failed', err);
+      toastFn('Erreur : ' + (err && err.message ? err.message : 'conversion Word \u00e9chou\u00e9e'));
+    });
   };
 
   const tabs = [
@@ -741,8 +743,8 @@ function App() {
           <button className="btn btn-light" onClick={handleQuickPdf} title="G\u00e9n\u00e9rer le PDF de l'offre">
             <Icon.download /> Offre en PDF
           </button>
-          <button className="btn btn-light" onClick={handleQuickDocx} title="T\u00e9l\u00e9charger en Word (.doc) \u2014 compatible Google Docs">
-            <Icon.download /> Soumission en Word
+          <button className="btn btn-light" onClick={handleQuickDocx} title="Convertir en Google Docs / .docx sur Drive">
+            <Icon.download /> Soumission sur Drive (Word)
           </button>
           {tab !== 'envoi' && !clientMode && (
             <button className="btn btn-orange" onClick={() => setTab('envoi')}>

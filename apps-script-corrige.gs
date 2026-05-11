@@ -10,6 +10,8 @@
 
 const SHEET_ID = SpreadsheetApp.getActiveSpreadsheet().getId();
 const DRIVE_FOLDER_ID = '1DAtlRsujdA8OsrNEHAQ6glacRSVUep2k';
+// Dossier dédié aux soumissions Word/Google Docs (séparé des PDF).
+const DOCX_FOLDER_ID = '1YqZzKSmRZy1FE5CTC5Wv0sf7r3r8Ar5X';
 
 // Schémas des feuilles — utilisés pour auto-créer les onglets manquants
 const SHEET_SCHEMAS = {
@@ -19,6 +21,7 @@ const SHEET_SCHEMAS = {
   'Envois':        ['id','soumissionId','dateEnvoi','type','destinataire','objet','linkId','statut','notes'],
   'Activite':      ['date','linkId','soumissionId','type','details'],
   'Pdfs':          ['id','soumissionId','dateCreation','nomFichier','pdfUrl','label','trigger'],
+  'Docx':          ['id','soumissionId','dateCreation','nomFichier','docUrl','docxUrl','label','trigger'],
 };
 
 // REST-style router : action = resource.method
@@ -47,6 +50,9 @@ const ROUTES = {
 
   'pdf.upload':            (ss, p) => uploadPdf(ss, p),
   'pdf.list':              (ss, p) => list(ss, 'Pdfs').filter(r => !p.soumissionId || r.soumissionId === p.soumissionId),
+
+  'docx.upload':           (ss, p) => uploadDocx(ss, p),
+  'docx.list':             (ss, p) => list(ss, 'Docx').filter(r => !p.soumissionId || r.soumissionId === p.soumissionId),
 };
 
 function doGet(e)  { return handle(e); }
@@ -217,6 +223,62 @@ function uploadPdf(ss, p) {
   return { url, fileId: file.getId() };
 }
 
+// ---------- DOCX / Google Doc upload to Drive ----------
+// Convertit le HTML imprimable en Google Doc (préserve la mise en page),
+// l'enregistre dans DOCX_FOLDER_ID, puis exporte une version .docx dans
+// le MÊME dossier. Retourne les deux URLs.
+//
+// ⚠️ Nécessite l'activation du service avancé "Drive API" :
+//    Apps Script Éditeur → Services + → Drive API → Ajouter (identifier: Drive, version v2)
+function uploadDocx(ss, p) {
+  if (!p.html) throw new Error('uploadDocx: html manquant');
+  const baseName = (p.nomFichier || 'Soumission iPropre').replace(/\.(docx?|html?)$/i, '');
+
+  // 1) HTML → Google Doc (conversion native = meilleure fidélité que HTML→DOCX direct)
+  const htmlBlob = Utilities.newBlob(p.html, 'text/html', baseName + '.html');
+  const docFile = Drive.Files.insert(
+    {
+      title: baseName,
+      parents: [{ id: DOCX_FOLDER_ID }],
+      mimeType: 'application/vnd.google-apps.document',
+    },
+    htmlBlob,
+    { convert: true }
+  );
+  const docUrl = 'https://docs.google.com/document/d/' + docFile.id + '/edit';
+  try {
+    DriveApp.getFileById(docFile.id).setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.EDIT);
+  } catch (e) {}
+
+  // 2) Export Google Doc → .docx blob → sauvegarde dans le même dossier
+  let docxUrl = '';
+  try {
+    const exportUrl = 'https://docs.google.com/feeds/download/documents/export/Export?id=' + docFile.id + '&exportFormat=docx';
+    const docxBlob = UrlFetchApp.fetch(exportUrl, {
+      headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+      muteHttpExceptions: true,
+    }).getBlob().setName(baseName + '.docx');
+    const docxFile = DriveApp.getFolderById(DOCX_FOLDER_ID).createFile(docxBlob);
+    try { docxFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}
+    docxUrl = 'https://drive.google.com/file/d/' + docxFile.getId() + '/view';
+  } catch (e) {
+    Logger.log('Export .docx échoué : ' + e);
+  }
+
+  append(ss, 'Docx', {
+    id: Utilities.getUuid(),
+    soumissionId: p.soumissionId || '',
+    dateCreation: new Date().toISOString(),
+    nomFichier: baseName,
+    docUrl: docUrl,
+    docxUrl: docxUrl,
+    label: p.label || '',
+    trigger: p.trigger || 'manual',
+  });
+
+  return { docUrl, docxUrl, fileId: docFile.id };
+}
+
 // ---------- Helper de diagnostic ----------
 // Lance cette fonction depuis l'éditeur Apps Script pour vérifier que tout est OK :
 //   - les onglets existent
@@ -236,8 +298,20 @@ function _diagnostic() {
   Logger.log('=== Drive ===');
   try {
     const folder = DriveApp.getFolderById(DRIVE_FOLDER_ID);
-    Logger.log('Dossier Drive OK : ' + folder.getName());
+    Logger.log('Dossier PDF OK : ' + folder.getName());
   } catch (e) {
-    Logger.log('ERREUR Drive : ' + e.toString());
+    Logger.log('ERREUR Drive PDF : ' + e.toString());
+  }
+  try {
+    const folder = DriveApp.getFolderById(DOCX_FOLDER_ID);
+    Logger.log('Dossier DOCX OK : ' + folder.getName());
+  } catch (e) {
+    Logger.log('ERREUR Drive DOCX : ' + e.toString());
+  }
+  try {
+    Drive.Files.list({ maxResults: 1 });
+    Logger.log('Service avancé Drive : activé');
+  } catch (e) {
+    Logger.log('ERREUR Service avancé Drive : ' + e.toString() + '\n→ Éditeur Apps Script : Services + → Drive API → Ajouter');
   }
 }
