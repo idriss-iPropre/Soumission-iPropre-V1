@@ -221,35 +221,106 @@ function isValidPhone(s) {
   return /^\d{3} \d{3} \d{4}$/.test(String(s || '').trim());
 }
 
-const ENVOI_FORM_KEY = 'ipropre.envoi.form.v1';
+const ENVOI_FORM_KEY_PREFIX = 'ipropre.envoi.form.v2.';
+const ENVOI_FORM_KEY_LEGACY = 'ipropre.envoi.form.v1';
+const NEW_SUFFIX = '__new__';
 const DEFAULT_MESSAGE = "Bonjour,\n\nVoici la soumission personnalisée que nous avons préparée pour vous. Vous trouverez ci-joint le PDF détaillé avec nos services et les options tarifaires.\n\nSi vous avez la moindre question, n'hésitez pas à nous contacter — ce serait un plaisir d'en discuter avec vous.\n\nCordialement,\nIdriss Sassi — iPropre\n+1 (819) 995-2414";
+
+// ---- Per-soumission form helpers (exposed globally so app.jsx can clear/migrate) ----
+function envoiFormKey(soumissionId) {
+  return ENVOI_FORM_KEY_PREFIX + (soumissionId || NEW_SUFFIX);
+}
+function loadEnvoiForm(soumissionId) {
+  try {
+    const key = envoiFormKey(soumissionId);
+    let raw = localStorage.getItem(key);
+    // Migrate the old global key into the "new soumission" slot on first run
+    if (!raw && !soumissionId) {
+      const legacy = localStorage.getItem(ENVOI_FORM_KEY_LEGACY);
+      if (legacy) {
+        localStorage.setItem(key, legacy);
+        localStorage.removeItem(ENVOI_FORM_KEY_LEGACY);
+        raw = legacy;
+      }
+    }
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return {
+        clientName: parsed.clientName || '',
+        company: parsed.company || '',
+        email: parsed.email || '',
+        phone: parsed.phone || '',
+        address: parsed.address || '',
+        message: parsed.message || DEFAULT_MESSAGE,
+      };
+    }
+  } catch (e) {}
+  return { clientName:'', company:'', email:'', phone:'', address:'', message: DEFAULT_MESSAGE };
+}
+function clearEnvoiNewForm() {
+  try { localStorage.removeItem(envoiFormKey(null)); } catch (e) {}
+}
+// Read whatever form is currently active for a given soumission id — used by app.jsx
+// for the top-bar "Offre en PDF" button which doesn't render EnvoiPage.
+function readEnvoiForm(soumissionId) {
+  return loadEnvoiForm(soumissionId);
+}
+Object.assign(window, { clearEnvoiNewForm, readEnvoiForm });
+
+// ---- Auto-download PDF using html2pdf (no print dialog) ----
+async function autoDownloadPdf(state, form, initialSnapshot) {
+  if (typeof window.html2pdf !== 'function') return false;
+  const full = buildPrintableHtml(state, form, initialSnapshot);
+  const m = full.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  let bodyHtml = m ? m[1] : full;
+  // Strip the on-screen-only "no-print" toolbar
+  bodyHtml = bodyHtml.replace(/<div class=\"no-print\"[\s\S]*?<\/div>/i, '');
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'position:fixed;left:-99999px;top:0;width:820px;background:#fff;font-family:Inter,system-ui,sans-serif;color:#111;font-size:12.5px;line-height:1.5;';
+  wrap.innerHTML = bodyHtml;
+  document.body.appendChild(wrap);
+  const safeName = (form.company || form.clientName || 'client').replace(/[\\/:*?"<>|]/g, '').trim().slice(0, 60) || 'client';
+  const stamp = new Date().toLocaleDateString('fr-CA').replace(/-/g, '');
+  const filename = `Soumission iPropre - ${safeName} - ${stamp}.pdf`;
+  try {
+    await window.html2pdf().from(wrap).set({
+      margin: [10, 10, 12, 10],
+      filename,
+      image: { type: 'jpeg', quality: 0.96 },
+      html2canvas: { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff' },
+      jsPDF: { unit: 'mm', format: 'letter', orientation: 'portrait' },
+      pagebreak: { mode: ['css', 'legacy'] },
+    }).save();
+    return true;
+  } catch (e) {
+    console.error('autoDownloadPdf failed', e);
+    return false;
+  } finally {
+    document.body.removeChild(wrap);
+  }
+}
 
 // EnvoiPage component
 function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMeta, isDirty, lastPdfUrl, onGoToSoumission }) {
-  // Load persisted form from localStorage so coordinates survive tab switches.
-  const [form, setForm] = React.useState(() => {
-    try {
-      const raw = localStorage.getItem(ENVOI_FORM_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        return {
-          clientName: parsed.clientName || '',
-          company: parsed.company || '',
-          email: parsed.email || '',
-          phone: parsed.phone || '',
-          address: parsed.address || '',
-          message: parsed.message || DEFAULT_MESSAGE,
-        };
-      }
-    } catch (e) {}
-    return { clientName:'', company:'', email:'', phone:'', address:'', message: DEFAULT_MESSAGE };
-  });
+  const currentSoumId = soumissionMeta?.id || '';
+  // Load persisted form keyed by the current soumission id (or the "new" slot).
+  const [form, setForm] = React.useState(() => loadEnvoiForm(currentSoumId));
   const [sent, setSent] = React.useState(false);
+  const lastSoumIdRef = React.useRef(currentSoumId);
 
-  // Persist form on every change
+  // When switching soumissions (id changes), reload that soumission's form.
   React.useEffect(() => {
-    try { localStorage.setItem(ENVOI_FORM_KEY, JSON.stringify(form)); } catch (e) {}
-  }, [form]);
+    if (lastSoumIdRef.current !== currentSoumId) {
+      lastSoumIdRef.current = currentSoumId;
+      setForm(loadEnvoiForm(currentSoumId));
+      setSent(false);
+    }
+  }, [currentSoumId]);
+
+  // Persist form on every change — under the current soumission's key.
+  React.useEffect(() => {
+    try { localStorage.setItem(envoiFormKey(currentSoumId), JSON.stringify(form)); } catch (e) {}
+  }, [form, currentSoumId]);
 
   const hiddenPlans = state.hiddenPlans || [];
   const visiblePlanIndices = PLAN_DEFS.map((_, i) => i).filter(i => !hiddenPlans.includes(i));
@@ -257,14 +328,13 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
   const plan = hasSelected ? PLAN_DEFS[state.selectedPlan] : null;
   const price = hasSelected ? state.prices[state.selectedPlan] : null;
 
-  // Build the email body with the 3 (visible) prices, bold + UPPERCASE on the chosen one
-  const buildEmailBody = () => {
+  // Build the email body with the 3 (visible) prices, bold + UPPERCASE on the chosen one.
+  // linkMode: 'edit' | 'readonly' | 'none' — controls which link block is appended.
+  const buildEmailBody = (linkMode = 'edit', linkUrl = null) => {
     const lines = visiblePlanIndices.map(i => {
       const p = PLAN_DEFS[i];
       const px = state.prices[i] || '—';
       const isSel = i === state.selectedPlan;
-      // mailto sends plain text; many clients render *text* or **text** as bold (Outlook auto-formats, others show stars).
-      // We use ALL CAPS + arrow + asterisks to make the choice unmissable in any client.
       if (isSel) {
         return `  → *${p.label.toUpperCase()} : ${px} $/MOIS*  — VOTRE CHOIX`;
       }
@@ -275,18 +345,25 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
       ? `Voici les options présentées, votre choix est mis en évidence :\n\n${lines}\n`
       : `Voici les ${visiblePlanIndices.length} options à comparer :\n\n${lines}\n\nFaites-nous savoir laquelle vous préférez — nous sommes là pour en discuter.`;
 
-    // Editable client link — the client can change any cell, add lines, then download a PDF.
-    const clientUrl = buildLongUrl(undefined, { editable: true });
-    const linkBlock = clientUrl
-      ? `\n────────────────────────────────────\nVOIR & MODIFIER LA SOUMISSION EN LIGNE :\n${clientUrl}\n\n(Ce lien vous permet d'ajuster les colonnes, ajouter des lignes ou changer de plan ; les cellules modifiées apparaîtront surlignées dans le PDF que vous téléchargerez.)\n`
-      : '';
+    let linkBlock = '';
+    if (linkMode === 'edit') {
+      const url = linkUrl || buildLongUrl(undefined, { editable: true });
+      if (url) {
+        linkBlock = `\n────────────────────────────────────\nVOIR & MODIFIER LA SOUMISSION EN LIGNE :\n${url}\n\n(Ce lien vous permet d'ajuster les colonnes, ajouter des lignes ou changer de plan ; les cellules modifiées apparaîtront surlignées dans le PDF que vous téléchargerez.)\n`;
+      }
+    } else if (linkMode === 'readonly') {
+      const url = linkUrl || buildLongUrl(undefined, { editable: false });
+      if (url) {
+        linkBlock = `\n────────────────────────────────────\nCONSULTER LA SOUMISSION EN LIGNE :\n${url}\n\n(Ce lien vous permet de consulter et imprimer la soumission en ligne — version lecture seule.)\n`;
+      }
+    }
 
     return `${form.message}\n\n────────────────────────────────────\n${optionsBlock}${linkBlock}────────────────────────────────────\n\nPour me répondre directement : idriss@ipropre.ca\n\n(Le PDF détaillé est joint à ce courriel.)`;
   };
 
-  const buildMailtoUrl = () => {
+  const buildMailtoUrl = (linkMode = 'edit', linkUrl = null) => {
     const subject = encodeURIComponent(`Soumission iPropre — ${form.company || form.clientName || 'votre entreprise'}`);
-    const body = encodeURIComponent(buildEmailBody());
+    const body = encodeURIComponent(buildEmailBody(linkMode, linkUrl));
     const cc = encodeURIComponent('idriss@ipropre.ca');
     return `mailto:${form.email}?cc=${cc}&subject=${subject}&body=${body}`;
   };
@@ -321,21 +398,68 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
 
   const handleSend = (e) => {
     e.preventDefault();
-    if (!validateClient()) return;
-    openPdfWindow();
-    setTimeout(() => { window.location.href = buildMailtoUrl(); }, 400);
-    setSent(true);
-    pushToast('PDF ouvert et courriel préparé');
+    // Default form submit → "email + editable link" (same as primary button)
+    sendWithLink('edit');
   };
 
-  const handlePdfOnly = () => {
+  // Unified send flow:
+  // 1) validate client info
+  // 2) auto-download PDF (html2pdf) so it lands in the user's Downloads folder
+  // 3) try to shorten the chosen link
+  // 4) open the user's mail app with the link pre-embedded in the body
+  const [sending, setSending] = React.useState(false);
+  const sendWithLink = async (linkMode /* 'edit' | 'readonly' */) => {
+    if (sending) return;
     if (!validateClient()) return;
-    openPdfWindow();
+    setSending(true);
+    try {
+      // 1) auto-download the PDF (best-effort)
+      pushToast('Génération du PDF…');
+      const pdfOk = await autoDownloadPdf(state, form);
+      if (!pdfOk) {
+        // Fallback to the print window
+        openPdfWindow();
+      }
+
+      // 2) shorten the appropriate link
+      const url = buildLongUrl(undefined, { editable: linkMode === 'edit' });
+      let finalUrl = url;
+      if (url) {
+        const short = await shortenUrl(url);
+        if (short) finalUrl = short;
+      }
+
+      // 3) record the sent link
+      if (finalUrl) {
+        await recordSentLink({ url, shortUrl: finalUrl !== url ? finalUrl : '' });
+      }
+
+      // 4) open the mail client with link + body
+      setTimeout(() => { window.location.href = buildMailtoUrl(linkMode, finalUrl); }, 250);
+      setSent(true);
+      pushToast(pdfOk
+        ? (linkMode === 'edit' ? '✓ PDF téléchargé + courriel avec lien formulaire' : '✓ PDF téléchargé + courriel avec lien lecture seule')
+        : 'PDF ouvert (à enregistrer) + courriel préparé');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handlePdfOnly = async () => {
+    if (!validateClient()) return;
+    pushToast('Génération du PDF…');
+    const ok = await autoDownloadPdf(state, form);
+    if (!ok) {
+      openPdfWindow();
+      pushToast('PDF ouvert — utilisez Imprimer / Enregistrer');
+    } else {
+      pushToast('✓ PDF téléchargé');
+    }
   };
 
   const handleMailto = () => {
     if (!form.email) { pushToast('Veuillez saisir un courriel'); return; }
-    window.location.href = buildMailtoUrl();
+    window.location.href = buildMailtoUrl('edit');
   };
 
   const [shortening, setShortening] = React.useState(false);
@@ -389,14 +513,21 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
     }
   };
 
-  // Try to shorten via is.gd (free, CORS-enabled). Falls back to long URL.
+  // Try to shorten via is.gd then v.gd. Both are CORS-enabled.
   const shortenUrl = async (longUrl) => {
-    try {
-      const api = `https://is.gd/create.php?format=json&url=${encodeURIComponent(longUrl)}`;
-      const resp = await fetch(api);
-      const data = await resp.json();
-      if (data.shorturl) return data.shorturl;
-    } catch (e) {}
+    // is.gd / v.gd both have ~5000 char URL limits; skip if too long.
+    if (longUrl.length > 4800) return null;
+    const endpoints = [
+      `https://is.gd/create.php?format=json&url=${encodeURIComponent(longUrl)}`,
+      `https://v.gd/create.php?format=json&url=${encodeURIComponent(longUrl)}`,
+    ];
+    for (const api of endpoints) {
+      try {
+        const resp = await fetch(api);
+        const data = await resp.json();
+        if (data.shorturl) return data.shorturl;
+      } catch (e) {}
+    }
     return null;
   };
 
@@ -538,19 +669,23 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
           </div>
 
           <div style={{ display: 'flex', gap: 10, marginTop: 20, flexWrap: 'wrap' }}>
-            <button type="submit" className="btn btn-orange">
-              <Icon.mail /> Générer PDF &amp; ouvrir courriel
+            <button type="submit" className="btn btn-orange" disabled={sending} style={{ opacity: sending ? 0.6 : 1 }}>
+              <Icon.mail /> {sending ? 'Envoi en cours…' : 'Courriel + lien formulaire'}
             </button>
-            <button type="button" className="btn btn-ghost" onClick={handlePdfOnly}>
+            <button type="button" className="btn btn-orange" onClick={() => sendWithLink('readonly')} disabled={sending} style={{ opacity: sending ? 0.6 : 1, background: '#5a4d3a' }}>
+              <Icon.mail /> {sending ? '…' : 'Courriel + lien lecture seule'}
+            </button>
+            <button type="button" className="btn btn-ghost" onClick={handlePdfOnly} disabled={sending}>
               <Icon.download /> Télécharger PDF seulement
-            </button>
-            <button type="button" className="btn btn-ghost" onClick={handleMailto}>
-              <Icon.external /> Ouvrir courriel seulement
             </button>
           </div>
 
-          <div style={{ marginTop: 18, padding: '12px 14px', background: '#fffbf0', borderRadius: 8, border: '1px solid #f5d886', fontSize: 12.5, color: '#6b4a0a', lineHeight: 1.55 }}>
-            <strong>À propos de l'envoi :</strong> l'envoi automatique de courriel nécessite un serveur côté iPropre (non disponible dans ce prototype). Le bouton ouvre donc votre application courriel (Outlook, Gmail, Apple Mail…) pré-remplie ; vous joignez simplement le PDF téléchargé avant d'envoyer.
+          <div style={{ marginTop: 10, padding: '10px 14px', background: '#f6f4ef', borderRadius: 8, fontSize: 12, color: 'var(--ip-muted)', lineHeight: 1.5 }}>
+            <strong style={{ color: 'var(--ip-ink)' }}>Le PDF s'enregistre automatiquement</strong> dans votre dossier <em>Téléchargements</em> au moment de l'envoi — vous n'avez plus qu'à le glisser dans le courriel qui s'ouvre.
+          </div>
+
+          <div style={{ marginTop: 10, padding: '12px 14px', background: '#fffbf0', borderRadius: 8, border: '1px solid #f5d886', fontSize: 12.5, color: '#6b4a0a', lineHeight: 1.55 }}>
+            <strong>À propos de l'envoi :</strong> l'envoi automatique de courriel nécessite un serveur côté iPropre (non disponible dans ce prototype). Le bouton ouvre donc votre application courriel (Outlook, Gmail, Apple Mail…) pré-remplie avec le lien choisi ; il vous reste à joindre le PDF téléchargé avant d'envoyer.
           </div>
         </form>
 

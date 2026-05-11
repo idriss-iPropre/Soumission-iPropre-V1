@@ -406,6 +406,8 @@ function App() {
     setLastPdfUrl('');
     setCurrentName('Soumission sans titre');
     store.setCurrentId(null);
+    // Clear the "new soumission" envoi form slot so the next soumission starts blank.
+    if (typeof window.clearEnvoiNewForm === 'function') window.clearEnvoiNewForm();
     setShowNewModal(false);
     toastFn('Nouvelle soumission');
     setTab('soumission');
@@ -414,11 +416,15 @@ function App() {
   // Direct PDF generation from action bar — requires the client form to be filled
   const handleQuickPdf = () => {
     if (typeof buildPrintableHtml !== 'function') { toastFn('Module PDF non charg\u00e9'); return; }
-    // Read latest persisted form from localStorage (envoi.jsx persists on every keystroke)
+    // Read latest persisted form (per-soumission key, falls back to "new" slot)
     let form = pdfClientForm;
     try {
-      const raw = localStorage.getItem('ipropre.envoi.form.v1');
-      if (raw) form = { ...form, ...JSON.parse(raw) };
+      if (typeof window.readEnvoiForm === 'function') {
+        form = { ...form, ...window.readEnvoiForm(store.currentId || '') };
+      } else {
+        const raw = localStorage.getItem('ipropre.envoi.form.v1');
+        if (raw) form = { ...form, ...JSON.parse(raw) };
+      }
     } catch (e) {}
     const missing = [];
     if (!form.clientName?.trim()) missing.push('Contact');
