@@ -118,5 +118,22 @@
     async list(soumissionId) { return api.call('pdf.list', soumissionId ? { soumissionId } : {}); },
   };
 
-  window.repo = { Soumissions, Versions, Liens, Envois, Activite, Pdfs, uuid, now };
+  // ---------- DOCX / Google Doc (Drive uploads) ----------
+  // Sends the printable HTML; Apps Script converts to Google Doc (preserves
+  // layout much better than client-side .doc) and exports a .docx in the same
+  // Drive folder. Returns { docUrl, docxUrl, fileId }.
+  const Docx = {
+    async upload({ soumissionId, html, nomFichier, label, trigger }) {
+      return api.call('docx.upload', {
+        soumissionId: soumissionId || '',
+        html: html || '',
+        nomFichier: nomFichier || 'Soumission iPropre',
+        label: label || '',
+        trigger: trigger || 'manual',
+      });
+    },
+    async list(soumissionId) { return api.call('docx.list', soumissionId ? { soumissionId } : {}); },
+  };
+
+  window.repo = { Soumissions, Versions, Liens, Envois, Activite, Pdfs, Docx, uuid, now };
 })();
