@@ -1,24 +1,16 @@
-# Mise à jour — 11 mai 2026
+# Correctifs — 11 mai 2026 (suite)
 
 ## Fichiers à remplacer sur GitHub
 
-| Fichier | Pourquoi |
+| Fichier | Correctif |
 |---|---|
-| `envoi.jsx` | Nouveaux boutons (Courriel + lien formulaire / lecture seule), PDF auto-téléchargé via html2pdf, formulaire par soumission, raccourcisseur de lien avec fallback v.gd |
-| `app.jsx` | Effacer le formulaire Envoi sur "Nouvelle soumission" + lecture du formulaire par ID de soumission |
-| `soumission.jsx` | Modèles de soumission, undo/redo compacts |
-| `iPropre-Soumission.html` | Build single-file mis à jour (regénéré) |
+| `envoi.jsx` | PDF auto-téléchargé : styles CSS scopés et injectés temporairement → fini le PDF blanc. Migration `__new__` → ID de soumission au premier enregistrement → le contact saisi avant d'enregistrer reste visible quand on rouvre la soumission. |
+| `iPropre-Soumission.html` | Build single-file regénéré. |
 
-## Comment commiter
+`app.jsx` et `soumission.jsx` n'ont **pas** changé depuis la dernière mise à jour.
 
 ```bash
-# Dans votre repo local
-cp envoi.jsx app.jsx soumission.jsx iPropre-Soumission.html /chemin/vers/votre/repo/
-
-cd /chemin/vers/votre/repo
-git add envoi.jsx app.jsx soumission.jsx iPropre-Soumission.html
-git commit -m "Envoi: 2 boutons mailto (formulaire/lecture seule), PDF auto-téléchargé, formulaire par soumission"
+git add envoi.jsx iPropre-Soumission.html
+git commit -m "Envoi: fix PDF auto (CSS scopé) + migration contact sur premier enregistrement"
 git push
 ```
-
-Aucun autre fichier n'a besoin d'être modifié.

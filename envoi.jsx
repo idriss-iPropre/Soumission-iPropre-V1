@@ -271,17 +271,51 @@ Object.assign(window, { clearEnvoiNewForm, readEnvoiForm });
 async function autoDownloadPdf(state, form, initialSnapshot) {
   if (typeof window.html2pdf !== 'function') return false;
   const full = buildPrintableHtml(state, form, initialSnapshot);
-  const m = full.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-  let bodyHtml = m ? m[1] : full;
-  // Strip the on-screen-only "no-print" toolbar
+
+  const styleMatch = full.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
+  const bodyMatch = full.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  const css = styleMatch ? styleMatch[1] : '';
+  let bodyHtml = bodyMatch ? bodyMatch[1] : full;
   bodyHtml = bodyHtml.replace(/<div class=\"no-print\"[\s\S]*?<\/div>/i, '');
+
+  // Naive but adequate CSS scoper — prefixes every non-@ selector with #ipropre-pdf-wrap
+  // so the temporarily-injected styles don't bleed onto the live app.
+  const scopeCss = (rawCss, scope) => {
+    return rawCss.replace(/([^{}]+)\{([^{}]*)\}/g, (m, sels, body) => {
+      const trimmed = sels.trim();
+      if (!trimmed || trimmed.startsWith('@')) return m;
+      const scopedSels = trimmed.split(',').map(s => {
+        const sel = s.trim();
+        if (!sel) return sel;
+        if (/^(html|body|\*)$/.test(sel)) return scope;
+        if (/^(html|body)\b/.test(sel)) return scope + sel.replace(/^(html|body)\b/, '');
+        return scope + ' ' + sel;
+      }).join(', ');
+      return scopedSels + '{' + body + '}';
+    });
+  };
+
+  const styleEl = document.createElement('style');
+  styleEl.setAttribute('data-ipropre-pdf', '1');
+  styleEl.textContent = scopeCss(css, '#ipropre-pdf-wrap');
+  document.head.appendChild(styleEl);
+
   const wrap = document.createElement('div');
-  wrap.style.cssText = 'position:fixed;left:-99999px;top:0;width:820px;background:#fff;font-family:Inter,system-ui,sans-serif;color:#111;font-size:12.5px;line-height:1.5;';
+  wrap.id = 'ipropre-pdf-wrap';
+  // Keep on-screen but invisible — html2canvas needs the element to be laid out.
+  wrap.style.cssText = 'position:fixed;left:-99999px;top:0;width:820px;background:#fff;color:#111;';
   wrap.innerHTML = bodyHtml;
   document.body.appendChild(wrap);
+
+  // Let fonts and images settle.
+  try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch (e) {}
+  await new Promise(r => setTimeout(r, 250));
+
   const safeName = (form.company || form.clientName || 'client').replace(/[\\/:*?"<>|]/g, '').trim().slice(0, 60) || 'client';
   const stamp = new Date().toLocaleDateString('fr-CA').replace(/-/g, '');
   const filename = `Soumission iPropre - ${safeName} - ${stamp}.pdf`;
+
+  let ok = false;
   try {
     await window.html2pdf().from(wrap).set({
       margin: [10, 10, 12, 10],
@@ -291,13 +325,14 @@ async function autoDownloadPdf(state, form, initialSnapshot) {
       jsPDF: { unit: 'mm', format: 'letter', orientation: 'portrait' },
       pagebreak: { mode: ['css', 'legacy'] },
     }).save();
-    return true;
+    ok = true;
   } catch (e) {
     console.error('autoDownloadPdf failed', e);
-    return false;
   } finally {
-    document.body.removeChild(wrap);
+    if (wrap.parentNode) wrap.parentNode.removeChild(wrap);
+    if (styleEl.parentNode) styleEl.parentNode.removeChild(styleEl);
   }
+  return ok;
 }
 
 // EnvoiPage component
@@ -309,9 +344,23 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
   const lastSoumIdRef = React.useRef(currentSoumId);
 
   // When switching soumissions (id changes), reload that soumission's form.
+  // Special case: when a brand-new soumission gets saved for the first time
+  // (prev id was empty → now has an id), migrate the "__new__" form data
+  // into the new id's slot so the contact info typed before saving sticks.
   React.useEffect(() => {
     if (lastSoumIdRef.current !== currentSoumId) {
+      const prevId = lastSoumIdRef.current;
       lastSoumIdRef.current = currentSoumId;
+      if (!prevId && currentSoumId) {
+        try {
+          const newSlotRaw = localStorage.getItem(envoiFormKey(null));
+          const targetRaw = localStorage.getItem(envoiFormKey(currentSoumId));
+          if (newSlotRaw && !targetRaw) {
+            localStorage.setItem(envoiFormKey(currentSoumId), newSlotRaw);
+            localStorage.removeItem(envoiFormKey(null));
+          }
+        } catch (e) {}
+      }
       setForm(loadEnvoiForm(currentSoumId));
       setSent(false);
     }
