@@ -209,6 +209,178 @@ function buildPrintableHtml(state, form, initialSnapshot) {
 </body></html>`;
 }
 
+// ---- COMPACT HTML builder for DOCX / contract attachment (2-3 pages max) ----
+// Differs from buildPrintableHtml: tight margins, smaller header (1/4 page),
+// wider service column (~55%), tighter table padding, no decorative gradients.
+function buildCompactDocxHtml(state, form, initialSnapshot, shortUrl) {
+  form = form || {};
+  const logoSrc = (typeof window !== 'undefined' && window.IPROPRE_LOGO_B64) || '';
+  const hiddenPlans = state.hiddenPlans || [];
+  const visiblePlans = PLAN_DEFS.map((p, i) => ({ p, i })).filter(({ i }) => !hiddenPlans.includes(i));
+  const plan = PLAN_DEFS[state.selectedPlan];
+  const price = state.prices[state.selectedPlan];
+  const esc = (s) => String(s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const today = new Date().toLocaleDateString('fr-CA', { year:'numeric', month:'long', day:'numeric' });
+
+  // Wider service column for clear descriptions
+  const planColW = `${(45 / Math.max(visiblePlans.length, 1)).toFixed(2)}%`;
+  const COLW = { label: '55%', plan: planColW };
+
+  const hasClientAdditions = state.sections.some(sec => sec.rows.some(r => r.clientAdded));
+
+  const sectionsHtml = state.sections.map((sec) => {
+    const rows = sec.rows.map((r) => {
+      const isAdded = !!r.clientAdded;
+      const labelHtml = isAdded
+        ? `[AJOUTÉ] ${esc(r.label) || '—'}`
+        : `${esc(r.label) || '—'}`;
+      return `<tr>
+        <td style="padding:3px 6px;border:1px solid #d0d0d0;font-size:9.5pt;${isAdded?'background:#fff4da;':''}">${labelHtml}</td>
+        ${visiblePlans.map(({ p, i: pi }) => {
+          const isSel = pi === state.selectedPlan;
+          const val = r.v[pi] || '—';
+          const isEmptyAdded = isAdded && !r.v[pi];
+          const style = isEmptyAdded
+            ? 'color:#c0392b;font-style:italic;'
+            : isSel ? 'background:#fff4da;font-weight:600;' : '';
+          return `<td style="padding:3px 4px;border:1px solid #d0d0d0;text-align:center;font-size:9pt;${style}">${isEmptyAdded?'À discuter':esc(val)}</td>`;
+        }).join('')}
+      </tr>`;
+    }).join('');
+    return `<div style="margin:8px 0 6px;page-break-inside:avoid">
+      <div style="font-family:Georgia,serif;font-size:11pt;font-weight:700;color:#111;margin:6px 0 3px;border-left:3px solid #F4A51C;padding-left:6px">${esc(sec.title)}</div>
+      <table style="width:100%;border-collapse:collapse;table-layout:fixed">
+        <colgroup>
+          <col style="width:${COLW.label}" />
+          ${visiblePlans.map(() => `<col style="width:${COLW.plan}" />`).join('')}
+        </colgroup>
+        <thead><tr style="background:#f0f0f0">
+          <th style="padding:3px 6px;border:1px solid #d0d0d0;text-align:left;font-size:8.5pt;font-weight:700;text-transform:uppercase;letter-spacing:0.05em">Description du service</th>
+          ${visiblePlans.map(({ p, i: pi }) => {
+            const isSel = pi === state.selectedPlan;
+            return `<th style="padding:3px 4px;border:1px solid #d0d0d0;text-align:center;font-size:8.5pt;font-weight:700;${isSel?'background:#F4A51C;color:#fff':''}">${esc(p.label)}${isSel?' ✓':''}</th>`;
+          }).join('')}
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+  }).join('');
+
+  const pricesHtml = `<table style="width:100%;border-collapse:collapse;margin-top:6px;table-layout:fixed">
+    <colgroup>
+      <col style="width:${COLW.label}" />
+      ${visiblePlans.map(() => `<col style="width:${COLW.plan}" />`).join('')}
+    </colgroup>
+    <tr style="background:#111;color:#fff">
+      <td style="padding:5px 8px;font-family:Georgia,serif;font-size:11pt;font-weight:700">Prix mensuel (taxes en sus)</td>
+      ${visiblePlans.map(({ p, i: pi }) => {
+        const isSel = pi === state.selectedPlan;
+        const px = state.prices[pi];
+        return `<td style="padding:5px 4px;text-align:center;font-family:Georgia,serif;font-size:${px?'12pt':'9.5pt'};font-weight:700;${!px?'background:#fff5f3;color:#c0392b':isSel?'background:#F4A51C;color:#1a1208':'background:#fafaf6;color:#333'}">${px ? esc(px) + ' $' : 'À confirmer'}</td>`;
+      }).join('')}
+    </tr>
+  </table>`;
+
+  return `<!doctype html><html lang="fr"><head><meta charset="utf-8">
+<title>Soumission iPropre — ${esc(form.company || form.clientName || 'Client')}</title>
+<style>
+  @page { size: Letter; margin: 12mm 12mm 14mm; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:Georgia,'Times New Roman',serif; color:#111; font-size:10pt; line-height:1.35; }
+  table { border-collapse:collapse; }
+  h2 { font-family:Georgia,serif; font-size:13pt; margin:12px 0 5px; font-weight:700; color:#111; border-bottom:1.5px solid #F4A51C; padding-bottom:2px }
+</style>
+</head><body>
+
+<!-- COMPACT HEADER : 1 row with logo, brand block, meta — ~1/4 page max -->
+<table style="width:100%;border-collapse:collapse;border-bottom:2px solid #F4A51C;margin-bottom:8px">
+  <tr>
+    ${logoSrc ? `<td style="padding:6px 10px 6px 0;vertical-align:middle;width:70px">
+      <img src="${logoSrc}" alt="iPropre" style="height:60px;width:auto;display:block" />
+    </td>` : ''}
+    <td style="padding:6px 0;vertical-align:middle">
+      <div style="font-family:Georgia,serif;font-size:20pt;font-weight:700;letter-spacing:-0.02em;line-height:1">i<span style="color:#F4A51C">Propre</span></div>
+      <div style="font-size:8pt;color:#666;margin-top:1px">3095 A. Jean-Noël-Lavoie, Bureau 202, Laval QC H7P 4W5 · +1 (819) 995-2414 · www.ipropre.ca</div>
+    </td>
+    <td style="padding:6px 0;vertical-align:middle;text-align:right;font-size:9pt;color:#444;width:140px">
+      <div style="font-family:Georgia,serif;font-size:11pt;font-weight:700;color:#111">N° ${Date.now().toString().slice(-6)}</div>
+      <div>Date : ${today}</div>
+      <div style="color:#F4A51C;font-size:8pt;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;margin-top:1px">Valide 30 jours</div>
+    </td>
+  </tr>
+</table>
+
+${shortUrl ? `
+<!-- ONLINE CONSULTATION LINK BUTTON -->
+<table style="width:100%;border-collapse:collapse;margin-bottom:10px">
+  <tr>
+    <td style="padding:0">
+      <a href="${esc(shortUrl)}" style="display:inline-block;text-decoration:none;background:#F4A51C;color:#fff;padding:8px 16px;border-radius:6px;font-family:Georgia,serif;font-size:10.5pt;font-weight:700;border:2px solid #F4A51C">
+        🔗 Consulter la soumission en ligne
+      </a>
+      <span style="display:inline-block;margin-left:10px;font-size:8.5pt;color:#666;vertical-align:middle">
+        Version interactive (mode lecture) :
+        <a href="${esc(shortUrl)}" style="color:#F4A51C;font-weight:600;text-decoration:underline">${esc(shortUrl)}</a>
+      </span>
+    </td>
+  </tr>
+</table>` : ''}
+
+<!-- COMPACT CLIENT BOX : 1 row, 5 columns -->
+<table style="width:100%;border-collapse:collapse;background:#fafaf6;border:1px solid #e0e0e0;margin-bottom:8px;table-layout:fixed">
+  <tr>
+    <td style="padding:5px 8px;vertical-align:top;border-right:1px solid #e0e0e0;width:20%">
+      <div style="font-size:7.5pt;color:#888;text-transform:uppercase;letter-spacing:0.06em;font-weight:600">Contact</div>
+      <div style="font-size:10pt;font-weight:600">${esc(form.clientName) || '—'}</div>
+    </td>
+    <td style="padding:5px 8px;vertical-align:top;border-right:1px solid #e0e0e0;width:25%">
+      <div style="font-size:7.5pt;color:#888;text-transform:uppercase;letter-spacing:0.06em;font-weight:600">Entreprise</div>
+      <div style="font-size:10pt;font-weight:600">${esc(form.company) || '—'}</div>
+    </td>
+    <td style="padding:5px 8px;vertical-align:top;border-right:1px solid #e0e0e0;width:25%">
+      <div style="font-size:7.5pt;color:#888;text-transform:uppercase;letter-spacing:0.06em;font-weight:600">Courriel</div>
+      <div style="font-size:9.5pt;font-weight:600">${esc(form.email) || '—'}</div>
+    </td>
+    <td style="padding:5px 8px;vertical-align:top;width:30%">
+      <div style="font-size:7.5pt;color:#888;text-transform:uppercase;letter-spacing:0.06em;font-weight:600">Téléphone</div>
+      <div style="font-size:10pt;font-weight:600">${esc(form.phone) || '—'}</div>
+    </td>
+  </tr>
+  <tr>
+    <td colspan="4" style="padding:5px 8px;border-top:1px solid #e0e0e0">
+      <span style="font-size:7.5pt;color:#888;text-transform:uppercase;letter-spacing:0.06em;font-weight:600">Adresse du service&nbsp;:</span>
+      <span style="font-size:10pt;font-weight:600">${esc(form.address) || '—'}</span>
+    </td>
+  </tr>
+</table>
+
+<h2>Détail de la soumission</h2>
+${sectionsHtml}
+
+<h2>Tarification</h2>
+${pricesHtml}
+
+${state.selectedPlan != null ? `
+<table style="width:100%;border-collapse:collapse;margin-top:6px;background:#fff4da;border:1px solid #f0d17a">
+  <tr>
+    <td style="padding:6px 10px;font-size:8.5pt;color:#7c5300;text-transform:uppercase;letter-spacing:0.08em;font-weight:600">Plan retenu</td>
+    <td style="padding:6px 10px;font-family:Georgia,serif;font-size:12pt;font-weight:700;color:#1a1208;text-align:right">${esc(plan.label)} — ${esc(price || '—')} $ / mois + tx</td>
+  </tr>
+</table>` : ''}
+
+<div style="margin-top:8px;padding:6px 10px;background:#f7f5ef;font-size:8.5pt;color:#444;line-height:1.4">
+  <strong style="color:#111">Nos garanties :</strong> Produits biologiques certifiés · Accord de confidentialité · Assurance civile 5 M$ · Résolution en 30 min · 70 points de contrôle.
+</div>
+
+<div style="margin-top:6px;font-size:7.5pt;color:#888;text-align:center;border-top:1px solid #eee;padding-top:4px">
+  iPropre · La propreté, c'est notre promesse. · Document généré le ${today}
+</div>
+
+</body></html>`;
+}
+
+Object.assign(window, { buildCompactDocxHtml });
+
 // ---- Phone formatting & validation ----
 // Accepts only digits, formats as "xxx xxx xxxx" while typing.
 function formatPhone(raw) {
