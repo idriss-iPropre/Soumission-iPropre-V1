@@ -769,9 +769,24 @@ function App() {
           <button className="btn btn-light" onClick={handleQuickPdf} title="G\u00e9n\u00e9rer le PDF de l'offre">
             <Icon.download /> Offre en PDF
           </button>
-          <button className="btn btn-light" onClick={handleQuickDocx} title="Convertir en Google Docs / .docx sur Drive">
-            <Icon.download /> Soumission sur Drive (Word)
-          </button>
+          {!clientMode && (
+            <button
+              className="btn btn-light"
+              onClick={handleQuickDocx}
+              title="Convertir en Google Docs / .docx sur Drive"
+              style={{ padding: '8px 12px', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            >
+              <Icon.download />
+              <svg width="16" height="14" viewBox="0 0 87 78" xmlns="http://www.w3.org/2000/svg" aria-label="Google Drive">
+                <path fill="#0066DA" d="M6.6 66.85L10.45 73.5c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8H0c0 1.55.4 3.1 1.2 4.5l5.4 9.35z"/>
+                <path fill="#00AC47" d="M43.65 25L29.9 1.2C28.55 2 27.4 3.1 26.6 4.5L1.2 48.5c-.8 1.4-1.2 2.95-1.2 4.5h27.5L43.65 25z"/>
+                <path fill="#EA4335" d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.5l5.85 11.5 7.9 12.3z"/>
+                <path fill="#00832D" d="M43.65 25L57.4 1.2C56.05.4 54.5 0 52.9 0H34.4c-1.6 0-3.15.45-4.5 1.2L43.65 25z"/>
+                <path fill="#2684FC" d="M59.8 53H27.5L13.75 76.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2L59.8 53z"/>
+                <path fill="#FFBA00" d="M73.4 26.5L60.7 4.5c-.8-1.4-1.95-2.5-3.3-3.3L43.65 25 59.8 53h27.45c0-1.55-.4-3.1-1.2-4.5l-12.65-22z"/>
+              </svg>
+            </button>
+          )}
           {tab !== 'envoi' && !clientMode && (
             <button className="btn btn-orange" onClick={() => setTab('envoi')}>
               <Icon.mail /> Envoyer l'offre <Icon.arrow />

@@ -160,6 +160,29 @@ function GaleriePage() {
           tagClass=""
         />
       </div>
+
+      {/* Témoignages — reprise depuis l'onglet Présentation */}
+      <div style={{ marginTop: 36 }}>
+        <SectionTitle label="Ce que nos clients disent" color="var(--ip-orange)" />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16, marginTop: 8 }}>
+          {[
+            { q: "C'est magnifique ! Tu as réussi à raviver notre salle à dîner. C'est tellement plus lumineux ! Un grand merci à ton équipe pour ce petit miracle.", n: 'Valérie Brodeur', r: 'Conseillère RH — CEPSA Chimie Bécancour' },
+            { q: "Chez Progi, nous faisons affaires avec iPropre depuis 6 ans. Un allié fiable, qui livre toujours haut dessus des attentes. Nous recommandons sans hésiter.", n: 'Alexandre Rocheleau', r: 'Directeur marketing — Progi' },
+            { q: "Merci beaucoup pour votre dévouement, c'est très rafraichissant puisque c'est quand même une rareté dans votre domaine.", n: 'Nathalie Guindon', r: 'Directrice Gestion et Développement — Biron' },
+          ].map((t, i) => (
+            <div key={i} className="card card-pad" style={{ position: 'relative', paddingTop: 34 }}>
+              <div style={{ position: 'absolute', top: 16, left: 22, fontFamily: 'var(--font-serif)', fontSize: 60, lineHeight: 0.8, color: 'var(--ip-orange)', opacity: 0.28 }}>"</div>
+              <div style={{ fontSize: 14, lineHeight: 1.6, color: 'var(--ip-ink-2)', fontStyle: 'italic', marginBottom: 14 }}>
+                « {t.q} »
+              </div>
+              <div style={{ borderTop: '1px solid var(--ip-line-2)', paddingTop: 12 }}>
+                <div style={{ fontWeight: 700, fontSize: 13.5 }}>{t.n}</div>
+                <div style={{ fontSize: 12, color: 'var(--ip-muted)' }}>{t.r}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

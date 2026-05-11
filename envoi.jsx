@@ -311,17 +311,14 @@ function buildCompactDocxHtml(state, form, initialSnapshot, shortUrl) {
 </table>
 
 ${shortUrl ? `
-<!-- ONLINE CONSULTATION LINK BUTTON -->
+<!-- ONLINE CONSULTATION LINK BUTTON (compact, no inline URL) -->
 <table style="width:100%;border-collapse:collapse;margin-bottom:10px">
   <tr>
     <td style="padding:0">
-      <a href="${esc(shortUrl)}" style="display:inline-block;text-decoration:none;background:#F4A51C;color:#fff;padding:8px 16px;border-radius:6px;font-family:Georgia,serif;font-size:10.5pt;font-weight:700;border:2px solid #F4A51C">
+      <a href="${esc(shortUrl)}" style="display:inline-block;text-decoration:none;background:#F4A51C;color:#fff;padding:8px 18px;border-radius:6px;font-family:Georgia,serif;font-size:10.5pt;font-weight:700;border:2px solid #F4A51C">
         🔗 Consulter la soumission en ligne
       </a>
-      <span style="display:inline-block;margin-left:10px;font-size:8.5pt;color:#666;vertical-align:middle">
-        Version interactive (mode lecture) :
-        <a href="${esc(shortUrl)}" style="color:#F4A51C;font-weight:600;text-decoration:underline">${esc(shortUrl)}</a>
-      </span>
+      <span style="display:inline-block;margin-left:10px;font-size:8.5pt;color:#888;vertical-align:middle">version interactive (lecture seule)</span>
     </td>
   </tr>
 </table>` : ''}
