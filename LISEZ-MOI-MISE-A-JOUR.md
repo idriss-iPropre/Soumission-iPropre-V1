@@ -1,16 +1,14 @@
-# Correctifs — 11 mai 2026 (suite)
+# Ajout — bouton « Soumission en Word »
 
 ## Fichiers à remplacer sur GitHub
 
-| Fichier | Correctif |
+| Fichier | Changement |
 |---|---|
-| `envoi.jsx` | PDF auto-téléchargé : styles CSS scopés et injectés temporairement → fini le PDF blanc. Migration `__new__` → ID de soumission au premier enregistrement → le contact saisi avant d'enregistrer reste visible quand on rouvre la soumission. |
+| `app.jsx` | Nouveau bouton **Soumission en Word** à côté de **Offre en PDF** dans la barre d'action. Génère un fichier `.doc` (HTML enrichi) compatible avec Microsoft Word ET Google Docs (clic droit → Ouvrir avec → Google Docs). |
 | `iPropre-Soumission.html` | Build single-file regénéré. |
 
-`app.jsx` et `soumission.jsx` n'ont **pas** changé depuis la dernière mise à jour.
-
 ```bash
-git add envoi.jsx iPropre-Soumission.html
-git commit -m "Envoi: fix PDF auto (CSS scopé) + migration contact sur premier enregistrement"
+git add app.jsx iPropre-Soumission.html
+git commit -m "Ajout bouton Soumission en Word (.doc compatible Google Docs)"
 git push
 ```
