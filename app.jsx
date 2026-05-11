@@ -447,7 +447,7 @@ function App() {
   // Direct DOCX (Word/Google Docs-compatible) generation. Wraps the printable
   // HTML in MS Office MIME so Word opens it natively and Google Drive offers
   // "Open with Google Docs".
-  const handleQuickDocx = () => {
+  const handleQuickDocx = async () => {
     if (typeof buildPrintableHtml !== 'function') { toastFn('Module PDF non charg\u00e9'); return; }
     let form = pdfClientForm;
     try {
@@ -466,7 +466,33 @@ function App() {
       setTab('envoi');
       return;
     }
-    const html = buildPrintableHtml(state, form, initialSnapshot);
+    // Generate the short client-consultation link FIRST so we can embed it in the docx.
+    let shortUrl = '';
+    try {
+      if (typeof window.encodeStateToUrl === 'function') {
+        const longUrl = window.encodeStateToUrl(state, form.clientName || form.company || '');
+        if (longUrl && longUrl.length < 4800) {
+          for (const api of [
+            `https://is.gd/create.php?format=json&url=${encodeURIComponent(longUrl)}`,
+            `https://v.gd/create.php?format=json&url=${encodeURIComponent(longUrl)}`,
+          ]) {
+            try {
+              const r = await fetch(api);
+              const j = await r.json();
+              if (j && j.shorturl) { shortUrl = j.shorturl; break; }
+            } catch (e) {}
+          }
+          if (!shortUrl) shortUrl = longUrl; // fallback to long URL
+        }
+      }
+    } catch (e) { console.warn('short link failed for docx', e); }
+
+    // Use the COMPACT HTML for Word/Drive — header takes ~1/4 page, wider service column,
+    // tighter rows, fits 2-3 pages even with many services. Embeds logo + clickable
+    // consultation link button.
+    const html = (typeof buildCompactDocxHtml === 'function')
+      ? buildCompactDocxHtml(state, form, initialSnapshot, shortUrl)
+      : buildPrintableHtml(state, form, initialSnapshot);
     const safeName = (form.company || form.clientName || 'client').replace(/[\\/:*?"<>|]/g, '').trim().slice(0, 60) || 'client';
     const stamp = new Date().toLocaleDateString('fr-CA').replace(/-/g, '');
     const baseName = `Soumission iPropre - ${safeName} - ${stamp}`;
