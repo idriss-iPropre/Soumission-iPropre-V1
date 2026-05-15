@@ -42,6 +42,132 @@ function BrandMark({ size = 38 }) {
   return <img src="assets/logo.png" alt="iPropre" style={{ height: size, width: 'auto', display: 'block' }} />;
 }
 
+// ---------- Contact card — shown at bottom of every tab ----------
+function ContactCard({ variant = 'inline' }) {
+  const inner = (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
+      padding: '14px 18px', borderRadius: 14,
+      background: 'linear-gradient(135deg, #fff8eb 0%, #fff 60%, #fbe5b2 100%)',
+      border: '1px solid #f0d17a',
+      boxShadow: '0 2px 10px rgba(244,165,28,0.08)',
+    }}>
+      <div style={{
+        width: 42, height: 42, borderRadius: 10, flexShrink: 0,
+        background: 'var(--ip-orange)', color: '#fff',
+        display: 'grid', placeItems: 'center',
+      }}>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+      </div>
+      <div style={{ flex: 1, minWidth: 200 }}>
+        <div style={{ fontFamily: 'var(--font-serif)', fontSize: 16, fontWeight: 700, color: 'var(--ip-ink)', lineHeight: 1.2 }}>
+          Une question&nbsp;? Contactez-nous à tout moment.
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--ip-muted)', marginTop: 3 }}>
+          Idriss Sassi, président — réponse rapide garantie.
+        </div>
+      </div>
+      <a
+        href="mailto:idriss@ipropre.ca"
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '8px 14px', borderRadius: 9, background: '#fff', color: 'var(--ip-ink)', border: '1px solid var(--ip-line)', fontSize: 13, fontWeight: 600, textDecoration: 'none', transition: 'all 0.15s' }}
+        onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--ip-orange)'; e.currentTarget.style.color = 'var(--ip-orange)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--ip-line)'; e.currentTarget.style.color = 'var(--ip-ink)'; }}
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        idriss@ipropre.ca
+      </a>
+      <a
+        href="tel:+18199952414"
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '8px 14px', borderRadius: 9, background: 'var(--ip-ink)', color: '#fff', fontSize: 13, fontWeight: 600, textDecoration: 'none', transition: 'all 0.15s' }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = '#2a2a30'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--ip-ink)'; }}
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+        819 995-2414
+      </a>
+    </div>
+  );
+  return <div style={{ margin: '28px 0 18px' }}>{inner}</div>;
+}
+
+// ---------- Floating contact pill — top-right, slides in when scrolled to top / tab change ----------
+function ContactPill({ tabKey }) {
+  const [show, setShow] = React.useState(true);
+  const [hovered, setHovered] = React.useState(false);
+  const lastScrollY = React.useRef(0);
+
+  // Re-trigger the slide-in animation whenever the active tab changes,
+  // and scroll the page back to the top so the pill appears on a fresh view.
+  React.useEffect(() => {
+    setShow(false);
+    const t = setTimeout(() => setShow(true), 60);
+    return () => clearTimeout(t);
+  }, [tabKey]);
+
+  // Hide on scroll-down, re-show on scroll-up (consistent behaviour across every tab).
+  React.useEffect(() => {
+    lastScrollY.current = window.scrollY;
+    const onScroll = () => {
+      const y = window.scrollY;
+      const goingDown = y > lastScrollY.current + 4;
+      const goingUp = y < lastScrollY.current - 4;
+      if (y < 60) {
+        // Near the top: always visible
+        setShow(true);
+      } else if (goingDown && y > 120) {
+        setShow(false);
+      } else if (goingUp) {
+        setShow(true);
+      }
+      lastScrollY.current = y;
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  return (
+    <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        position: 'fixed',
+        top: 78, right: 24,
+        zIndex: 35,
+        display: 'flex', alignItems: 'center', gap: 10,
+        padding: '8px 14px 8px 10px',
+        borderRadius: 999,
+        background: 'linear-gradient(135deg, #fff8eb 0%, #fff 60%, #fbe5b2 100%)',
+        border: '1px solid #f0d17a',
+        boxShadow: hovered ? '0 8px 24px rgba(244,165,28,0.28)' : '0 4px 14px rgba(244,165,28,0.18)',
+        transform: show ? 'translateY(0)' : 'translateY(-120%)',
+        opacity: show ? 1 : 0,
+        transition: 'transform 0.5s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.4s ease, box-shadow 0.2s ease',
+        fontSize: 12.5,
+        maxWidth: 'calc(100vw - 48px)',
+      }}
+    >
+      <div style={{
+        width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
+        background: 'var(--ip-orange)', color: '#fff',
+        display: 'grid', placeItems: 'center',
+      }}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+      </div>
+      <div style={{ fontWeight: 600, color: 'var(--ip-ink)', fontFamily: 'var(--font-serif)', fontSize: 13, whiteSpace: 'nowrap' }}>
+        Contactez-nous à tout moment
+      </div>
+      <div style={{ display: 'flex', gap: 6, marginLeft: 4 }}>
+        <a href="mailto:idriss@ipropre.ca" title="idriss@ipropre.ca" style={{ display: 'inline-grid', placeItems: 'center', width: 28, height: 28, borderRadius: '50%', background: '#fff', color: 'var(--ip-ink)', border: '1px solid var(--ip-line)', textDecoration: 'none' }}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        </a>
+        <a href="tel:+18199952414" title="819 995-2414" style={{ display: 'inline-grid', placeItems: 'center', width: 28, height: 28, borderRadius: '50%', background: 'var(--ip-ink)', color: '#fff', textDecoration: 'none' }}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+        </a>
+      </div>
+    </div>
+  );
+}
+
 // ---------- Currency helpers ----------
 const fmtMoney = (n) => {
   if (n == null || isNaN(n)) return '—';
@@ -119,4 +245,4 @@ function SmartSelect({ value, onChange, options, extraClass = '' }) {
 }
 
 // Expose globally for other Babel scripts
-Object.assign(window, { Icon, useToasts, BrandMark, fmtMoney, SectionTitle, SmartSelect });
+Object.assign(window, { Icon, useToasts, BrandMark, ContactCard, ContactPill, fmtMoney, SectionTitle, SmartSelect });

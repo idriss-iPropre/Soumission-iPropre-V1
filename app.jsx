@@ -149,7 +149,13 @@ function App() {
   // If client mode + linkId is revoked locally → show revoked screen instead of soumission
   const linkRevoked = clientMode && clientLinkId && typeof window.isLinkRevoked === 'function' && window.isLinkRevoked(clientLinkId);
 
-  const [tab, setTab] = React.useState(clientMode ? 'soumission' : 'presentation');
+  const [tab, setTabRaw] = React.useState(clientMode ? 'soumission' : 'presentation');
+  // Wrapper: scroll to top whenever the active tab changes so the contact pill
+  // always slides in from a consistent top-of-page position.
+  const setTab = React.useCallback((next) => {
+    setTabRaw(next);
+    try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) { window.scrollTo(0, 0); }
+  }, []);
   const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
   const [toastFn, toastUI] = useToasts();
   const { authed, login, logout } = useAuth();
@@ -413,10 +419,30 @@ function App() {
     setTab('soumission');
   };
 
-  // Direct PDF generation from action bar — requires the client form to be filled
+  // Direct PDF generation from action bar.
+  // Vendor mode: requires the Envoi-form contact fields to be filled.
+  // Client mode (lien partagé): skips validation — the client just wants to
+  // print/save the soumission they're viewing, with whatever name was on the link.
   const handleQuickPdf = () => {
     if (typeof buildPrintableHtml !== 'function') { toastFn('Module PDF non charg\u00e9'); return; }
-    // Read latest persisted form (per-soumission key, falls back to "new" slot)
+
+    if (clientMode) {
+      // Use the name from the share-link payload; pad missing fields with placeholders.
+      const cName = (clientPayload && clientPayload.clientName) || '';
+      const form = {
+        clientName: cName,
+        company: cName,
+        email: '', phone: '', address: '',
+      };
+      const html = buildPrintableHtml(state, form, initialSnapshot);
+      const w = window.open('', '_blank');
+      if (!w) { toastFn('D\u00e9bloquer les pop-ups pour le PDF'); return; }
+      w.document.open(); w.document.write(html); w.document.close();
+      toastFn('PDF pr\u00eat \u2014 utilisez Imprimer / Enregistrer');
+      return;
+    }
+
+    // Vendor: read latest persisted Envoi-form for this soumission
     let form = pdfClientForm;
     try {
       if (typeof window.readEnvoiForm === 'function') {
@@ -729,7 +755,7 @@ function App() {
             onLogout={() => { logout(); toastFn('Déconnecté'); }}
             sentLinks={sentLinks}
             gsheet={gsheet}
-            isDirty={isDirty}
+            isDirty={clientMode ? false : isDirty}
             lastPdfUrl={lastPdfUrl}
             onGoToSoumission={() => setTab('soumission')}
             soumissionMeta={{
@@ -739,6 +765,11 @@ function App() {
             }}
           />
         )}
+
+        {/* Contact card — visible at the bottom of every tab */}
+        <ContactCard />
+        {/* Floating contact pill — top-right, slides in on tab change / scroll-to-top */}
+        <ContactPill tabKey={tab} />
 
         {/* Sticky action bar (always visible) */}
         <div className="actionbar">

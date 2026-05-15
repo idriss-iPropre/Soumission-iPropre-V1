@@ -622,7 +622,7 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
 
   // Unified send flow:
   // 1) validate client info
-  // 2) auto-download PDF (html2pdf) so it lands in the user's Downloads folder
+  // 2) open the print window so the user can save the PDF (reliable across browsers)
   // 3) try to shorten the chosen link
   // 4) open the user's mail app with the link pre-embedded in the body
   const [sending, setSending] = React.useState(false);
@@ -631,13 +631,9 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
     if (!validateClient()) return;
     setSending(true);
     try {
-      // 1) auto-download the PDF (best-effort)
-      pushToast('Génération du PDF…');
-      const pdfOk = await autoDownloadPdf(state, form);
-      if (!pdfOk) {
-        // Fallback to the print window
-        openPdfWindow();
-      }
+      // 1) open the print window — proven to render the full styled PDF
+      pushToast('Ouverture du PDF…');
+      openPdfWindow();
 
       // 2) shorten the appropriate link
       const url = buildLongUrl(undefined, { editable: linkMode === 'edit' });
@@ -653,26 +649,20 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
       }
 
       // 4) open the mail client with link + body
-      setTimeout(() => { window.location.href = buildMailtoUrl(linkMode, finalUrl); }, 250);
+      setTimeout(() => { window.location.href = buildMailtoUrl(linkMode, finalUrl); }, 400);
       setSent(true);
-      pushToast(pdfOk
-        ? (linkMode === 'edit' ? '✓ PDF téléchargé + courriel avec lien formulaire' : '✓ PDF téléchargé + courriel avec lien lecture seule')
-        : 'PDF ouvert (à enregistrer) + courriel préparé');
+      pushToast(linkMode === 'edit'
+        ? '✓ PDF ouvert (à enregistrer) + courriel avec lien formulaire'
+        : '✓ PDF ouvert (à enregistrer) + courriel avec lien lecture seule');
     } finally {
       setSending(false);
     }
   };
 
-  const handlePdfOnly = async () => {
+  const handlePdfOnly = () => {
     if (!validateClient()) return;
-    pushToast('Génération du PDF…');
-    const ok = await autoDownloadPdf(state, form);
-    if (!ok) {
-      openPdfWindow();
-      pushToast('PDF ouvert — utilisez Imprimer / Enregistrer');
-    } else {
-      pushToast('✓ PDF téléchargé');
-    }
+    openPdfWindow();
+    pushToast('PDF ouvert — utilisez Imprimer / Enregistrer');
   };
 
   const handleMailto = () => {
@@ -899,11 +889,11 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
           </div>
 
           <div style={{ marginTop: 10, padding: '10px 14px', background: '#f6f4ef', borderRadius: 8, fontSize: 12, color: 'var(--ip-muted)', lineHeight: 1.5 }}>
-            <strong style={{ color: 'var(--ip-ink)' }}>Le PDF s'enregistre automatiquement</strong> dans votre dossier <em>Téléchargements</em> au moment de l'envoi — vous n'avez plus qu'à le glisser dans le courriel qui s'ouvre.
+            <strong style={{ color: 'var(--ip-ink)' }}>Le PDF s'ouvre dans un nouvel onglet</strong> au moment de l'envoi — appuyez sur <strong style={{ color: 'var(--ip-ink)' }}>Cmd/Ctrl + P</strong> puis <em>Enregistrer en PDF</em> pour le joindre au courriel.
           </div>
 
           <div style={{ marginTop: 10, padding: '12px 14px', background: '#fffbf0', borderRadius: 8, border: '1px solid #f5d886', fontSize: 12.5, color: '#6b4a0a', lineHeight: 1.55 }}>
-            <strong>À propos de l'envoi :</strong> l'envoi automatique de courriel nécessite un serveur côté iPropre (non disponible dans ce prototype). Le bouton ouvre donc votre application courriel (Outlook, Gmail, Apple Mail…) pré-remplie avec le lien choisi ; il vous reste à joindre le PDF téléchargé avant d'envoyer.
+            <strong>À propos de l'envoi :</strong> au moment de l'envoi, un onglet « Aperçu PDF » s'ouvre — utilisez <strong>Imprimer / Enregistrer PDF</strong> (Cmd/Ctrl + P) pour télécharger le PDF, puis joignez-le au courriel pré-rempli avant d'envoyer.
           </div>
         </form>
 
