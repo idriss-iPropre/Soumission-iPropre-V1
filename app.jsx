@@ -726,7 +726,7 @@ function App() {
 
       <main>
         {clientMode && (
-          <div style={{
+          <div className="client-banner" style={{
             background: 'linear-gradient(90deg, #fff4da 0%, #fef8e9 100%)',
             borderBottom: '1px solid #f4d680',
             padding: '14px 32px',

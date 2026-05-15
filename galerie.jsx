@@ -117,7 +117,7 @@ function GaleriePage() {
       </div>
 
       {/* Before/after grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: 20, marginBottom: 32 }}>
+      <div className="galerie-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: 20, marginBottom: 32 }}>
         {DEFAULT_GALLERY.map(g => (
           <div key={g.id} className="card" style={{ overflow: 'hidden' }}>
             {g.image ? (
@@ -138,7 +138,7 @@ function GaleriePage() {
 
       {/* Videos */}
       <SectionTitle label="Vidéos de réalisation" color="var(--ip-orange)" />
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
+      <div className="video-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
         <VideoCard
           src="assets/videos/realisation-cirage-1.mp4"
           tag="Cirage plancher"

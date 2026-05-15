@@ -178,8 +178,10 @@
   /* ---------- Responsive ---------- */
   @media (max-width: 900px) {
     .topbar { position: -webkit-sticky; position: sticky; top: 0; }
-    .topbar-inner { flex-wrap: wrap; gap: 10px; padding: 10px 14px; }
-    .topbar-actions { order: 4; width: 100%; justify-content: flex-end; }
+    .topbar-inner { flex-wrap: wrap; gap: 8px; padding: 8px 12px; }
+    .brand img { height: 32px !important; }
+    .brand .name { font-size: 18px !important; }
+    .topbar-actions { order: 4; justify-content: flex-end; }
     .topbar-actions button { font-size: 12px !important; padding: 5px 10px !important; }
     .client-badge .meta { display: none; }
     .nav-tabs {
@@ -191,14 +193,19 @@
     .nav-tabs::-webkit-scrollbar { display: none; }
     .nav-tabs button { flex: 0 0 auto; white-space: nowrap; padding: 8px 14px; font-size: 13px; }
     main { padding: 20px 16px; }
-    .page-head { flex-direction: column; align-items: flex-start; }
-    .page-head h1 { font-size: 32px; }
+    .page-head { flex-direction: column; align-items: flex-start; gap: 14px; }
+    .page-head h1 { font-size: 30px !important; line-height: 1.15 !important; word-break: normal; overflow-wrap: break-word; hyphens: none; }
+    .page-head .sub { font-size: 14px; }
+    .eyebrow { font-size: 10.5px; }
   }
 
   /* ---------- Mobile: keep table form, tighten plan columns ---------- */
   @media (max-width: 720px) {
     .topbar .client-badge { display: none; }
     .brand .tag { display: none; }
+
+    /* Force readable type sizes — no extreme display sizes */
+    .page-head h1 { font-size: 26px !important; }
 
     /* Table: give Prestation more breathing room, compact plan cols */
     .stable { table-layout: fixed; }
@@ -236,8 +243,15 @@
       border-bottom: 1px solid var(--ip-line);
     }
     .prices-grid > *:first-child { padding: 14px 16px !important; }
-
-    .page-head h1 { font-size: 28px; }
+    /* Plan header cards: smaller text so the 3 columns fit on phone */
+    .plan-head { padding: 12px 6px !important; }
+    .plan-head .lbl { font-size: 14px !important; }
+    .plan-head .sub { font-size: 9px !important; letter-spacing: 0.1em !important; }
+    .plan-head .ribbon { font-size: 8.5px !important; padding: 2px 6px !important; margin-top: 4px !important; }
+    /* Hide redundant "CHOISI" pill on phone — outline + ribbon is enough */
+    .plan-head [data-choisi-pill] { display: none !important; }
+    /* Section title row */
+    .stable thead th { font-size: 9.5px !important; }
 
     /* Compact action bar on mobile — 2 rows, full width buttons */
     .actionbar {
@@ -245,6 +259,9 @@
       gap: 8px !important;
       flex-wrap: wrap;
       bottom: 10px !important;
+      left: 10px;
+      right: 10px;
+      margin: 0 !important;
       border-radius: 14px !important;
     }
     .actionbar .total-box {
@@ -272,6 +289,62 @@
     .envoi-grid aside { position: static !important; }
     .envoi-grid .two-col { grid-template-columns: 1fr !important; }
     .card-pad { padding: 18px !important; }
+
+    /* Présentation hero strip: stack logo, content */
+    .presentation-hero { padding: 18px 18px !important; }
+    .presentation-hero > * { gap: 14px !important; }
+    .presentation-hero img { height: 56px !important; }
+    .presentation-hero .promise-h1 { font-size: 18px !important; line-height: 1.3 !important; }
+    .presentation-hero .promise-tag { font-size: 9.5px !important; letter-spacing: 0.16em !important; }
+
+    /* Présentation stats: 2-col grid (was 3-col), smaller display numbers */
+    .stats-grid { grid-template-columns: repeat(2, 1fr) !important; }
+    .stats-grid > div:nth-child(odd) { border-left: none !important; }
+    .stats-grid > div:nth-child(n+3) { border-top: 1px solid var(--ip-line-2) !important; }
+    .stats-grid .big-num { font-size: 28px !important; }
+    .stats-aside { border-left: none !important; border-top: 1px solid var(--ip-line-2) !important; padding: 22px 20px !important; }
+    .stats-aside .big-num { font-size: 32px !important; }
+    .stats-header .big-num { font-size: 40px !important; }
+    .stats-header .head-text { font-size: 14.5px !important; }
+
+    /* Stats grid: only one column on the wider section breakdown */
+    .stats-two-col { grid-template-columns: 1fr !important; }
+
+    /* Client-mode banner: slim on phone */
+    .client-banner { padding: 10px 14px !important; gap: 10px !important; font-size: 12.5px !important; }
+    .client-banner > div:first-child { width: 26px !important; height: 26px !important; }
+    .client-banner svg { width: 13px !important; height: 13px !important; }
+    .client-banner strong { font-size: 13.5px !important; }
+
+    /* Contact pill — adapt to small screens */
+    .contact-pill {
+      top: auto !important;
+      bottom: 90px !important;
+      right: 8px !important;
+      left: 8px !important;
+      max-width: calc(100vw - 16px);
+      justify-content: center !important;
+    }
+    .contact-pill-text { display: none !important; }
+    .contact-pill-icon-main { width: 26px !important; height: 26px !important; }
+    .contact-pill a { width: 36px !important; height: 36px !important; }
+
+    /* Service cards: 1 column on phone */
+    .services-grid { grid-template-columns: 1fr !important; }
+    .testimonial-grid { grid-template-columns: 1fr !important; }
+    .clients-grid { grid-template-columns: repeat(2, 1fr) !important; }
+    .galerie-grid { grid-template-columns: 1fr !important; }
+    .video-grid { grid-template-columns: 1fr !important; }
+  }
+
+  /* ---------- Small phones ---------- */
+  @media (max-width: 420px) {
+    .page-head h1 { font-size: 23px !important; }
+    .topbar-inner { padding: 6px 10px; }
+    main { padding: 16px 12px; }
+    .plan-head .lbl { font-size: 12.5px !important; }
+    .actionbar .btn { font-size: 11.5px !important; padding: 8px 6px !important; }
+    .actionbar .total-box .v { font-size: 13.5px !important; }
   }
 </style>
 </head>

@@ -17,12 +17,12 @@ function PresentationPage() {
       </div>
 
       {/* Hero strip: key promises */}
-      <div className="card" style={{ padding: 0, marginBottom: 22, overflow: 'hidden', background: 'linear-gradient(135deg, #0f0f10 0%, #2a2a30 100%)', color: '#fff' }}>
+      <div className="card presentation-hero" style={{ padding: 0, marginBottom: 22, overflow: 'hidden', background: 'linear-gradient(135deg, #0f0f10 0%, #2a2a30 100%)', color: '#fff' }}>
         <div style={{ padding: '28px 32px', display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
           <img src="assets/logo-full.png" alt="iPropre" style={{ height: 78, width: 'auto', filter: 'brightness(0) invert(1)' }} />
-          <div style={{ flex: 1, minWidth: 260 }}>
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, letterSpacing: '0.22em', textTransform: 'uppercase', color: 'var(--ip-orange)', marginBottom: 6 }}>Entretien · Gestion · Formation — depuis 8 ans</div>
-            <div style={{ fontFamily: 'var(--font-serif)', fontSize: 22, lineHeight: 1.3, fontWeight: 600 }}>La propreté, c'est notre promesse.</div>
+          <div style={{ flex: 1, minWidth: 240 }}>
+            <div className="promise-tag" style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, letterSpacing: '0.22em', textTransform: 'uppercase', color: 'var(--ip-orange)', marginBottom: 6 }}>Entretien · Gestion · Formation — depuis 8 ans</div>
+            <div className="promise-h1" style={{ fontFamily: 'var(--font-serif)', fontSize: 22, lineHeight: 1.3, fontWeight: 600 }}>La propreté, c'est notre promesse.</div>
           </div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 1, background: 'rgba(255,255,255,0.08)' }}>
@@ -42,7 +42,7 @@ function PresentationPage() {
 
       {/* 01 — Services */}
       <SectionTitle label="01 — Nos services" color="var(--ip-orange)" />
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16, marginBottom: 28 }}>
+      <div className="services-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16, marginBottom: 28 }}>
         {[
         { t: 'Nettoyage commercial', d: "De l'entretien quotidien aux interventions spécialisées — nous prenons soin de vos espaces avec précision.", tags: ['Désinfection', 'Cirage', 'Tapis', 'Vitres', 'Décapage', 'Après sinistre'], accent: 'var(--ip-orange)' },
         { t: "Gestion d'édifice", d: "Au-delà du ménage : nous coordonnons la maintenance complète de votre immeuble pour zéro souci.", tags: ['Peinture', 'Électricité', 'Bricolage', 'Coordination fournisseurs'], accent: 'var(--ip-blue)' },
@@ -63,15 +63,15 @@ function PresentationPage() {
       {/* 02 — Nos chiffres */}
       <SectionTitle label="02 — Nos chiffres" color="var(--ip-orange)" />
       <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 28 }}>
-        <div style={{ padding: '22px 28px', background: 'var(--ip-orange-soft)', display: 'flex', alignItems: 'baseline', gap: 14, flexWrap: 'wrap' }}>
-          <div style={{ fontFamily: 'var(--font-serif)', fontSize: 56, fontWeight: 800, color: 'var(--ip-orange)', lineHeight: 0.9, letterSpacing: '-0.03em', flexShrink: 0 }}>1 %</div>
-          <div style={{ fontFamily: 'var(--font-serif)', fontSize: 18, fontWeight: 700, color: '#7c5300', lineHeight: 1.35, flex: 1, minWidth: 240 }}>
+        <div className="stats-header" style={{ padding: '22px 28px', background: 'var(--ip-orange-soft)', display: 'flex', alignItems: 'baseline', gap: 14, flexWrap: 'wrap' }}>
+          <div className="big-num" style={{ fontFamily: 'var(--font-serif)', fontSize: 56, fontWeight: 800, color: 'var(--ip-orange)', lineHeight: 0.9, letterSpacing: '-0.03em', flexShrink: 0 }}>1 %</div>
+          <div className="head-text" style={{ fontFamily: 'var(--font-serif)', fontSize: 18, fontWeight: 700, color: '#7c5300', lineHeight: 1.35, flex: 1, minWidth: 240 }}>
             Nous faisons partie du <span style={{ background: '#fff', padding: '0 6px', borderRadius: 4, color: 'var(--ip-orange)' }}>top 1 %</span> des meilleures entreprises du secteur de l'entretien au Québec.
           </div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(260px, 1fr)', alignItems: 'stretch' }}>
+        <div className="stats-two-col" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(260px, 1fr)', alignItems: 'stretch' }}>
           {/* Left: 3-column grid of stats */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', borderTop: '1px solid var(--ip-line-2)' }}>
+          <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', borderTop: '1px solid var(--ip-line-2)' }}>
             {[
             { big: '200k', u: 'pi²', lbl: 'nettoyés chaque jour' },
             { big: '1 400', u: '', lbl: 'bureaux entretenus chaque jour' },
@@ -86,7 +86,7 @@ function PresentationPage() {
               borderLeft: i % 3 !== 0 ? '1px solid var(--ip-line-2)' : 'none'
             }}>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                  <div style={{ fontFamily: 'var(--font-serif)', fontSize: 38, fontWeight: 800, color: 'var(--ip-orange)', letterSpacing: '-0.02em', lineHeight: 1 }}>{s.big}</div>
+                  <div className="big-num" style={{ fontFamily: 'var(--font-serif)', fontSize: 38, fontWeight: 800, color: 'var(--ip-orange)', letterSpacing: '-0.02em', lineHeight: 1 }}>{s.big}</div>
                   <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ip-muted)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>{s.u}</div>
                 </div>
                 <div style={{ fontSize: 12.5, color: 'var(--ip-ink-2)', marginTop: 8, lineHeight: 1.45 }}>{s.lbl}</div>
@@ -94,7 +94,7 @@ function PresentationPage() {
             )}
           </div>
           {/* Right: featured stat */}
-          <div style={{
+          <div className="stats-aside" style={{
             borderTop: '1px solid var(--ip-line-2)',
             borderLeft: '1px solid var(--ip-line-2)',
             background: 'linear-gradient(155deg, #fff8eb 0%, var(--ip-orange-soft) 100%)',
@@ -105,9 +105,9 @@ function PresentationPage() {
               Chez nos clients
             </div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, flexWrap: 'wrap' }}>
-              <span style={{ fontFamily: 'var(--font-serif)', fontSize: 72, fontWeight: 800, color: 'var(--ip-orange)', lineHeight: 0.9, letterSpacing: '-0.04em' }}>5 %</span>
+              <span className="big-num" style={{ fontFamily: 'var(--font-serif)', fontSize: 72, fontWeight: 800, color: 'var(--ip-orange)', lineHeight: 0.9, letterSpacing: '-0.04em' }}>5 %</span>
               <span style={{ fontFamily: 'var(--font-serif)', fontSize: 38, fontWeight: 600, color: '#c0392b', lineHeight: 1, margin: '0 6px', fontStyle: 'italic' }}>&amp;</span>
-              <span style={{ fontFamily: 'var(--font-serif)', fontSize: 72, fontWeight: 800, color: 'var(--ip-ink)', lineHeight: 0.9, letterSpacing: '-0.04em' }}>0 %</span>
+              <span className="big-num" style={{ fontFamily: 'var(--font-serif)', fontSize: 72, fontWeight: 800, color: 'var(--ip-ink)', lineHeight: 0.9, letterSpacing: '-0.04em' }}>0 %</span>
             </div>
             <div style={{ fontSize: 14, color: 'var(--ip-ink)', marginTop: 14, lineHeight: 1.45, fontWeight: 500 }}>
               taux de <strong>roulement</strong> / <strong>absence</strong>
@@ -203,7 +203,7 @@ function PresentationPage() {
 
       {/* 04 — Témoignages */}
       <SectionTitle label="04 — Ce que nos clients disent" color="var(--ip-orange)" />
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16, marginBottom: 28 }}>
+      <div className="testimonial-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16, marginBottom: 28 }}>
         {[
         { q: "C'est magnifique ! Tu as réussi à raviver notre salle à dîner. C'est tellement plus lumineux ! Un grand merci à ton équipe pour ce petit miracle.", n: 'Valérie Brodeur', r: 'Conseillère RH — CEPSA Chimie Bécancour' },
         { q: "Chez Progi, nous faisons affaires avec iPropre depuis 6 ans. Un allié fiable, qui livre toujours haut dessus des attentes. Nous recommandons sans hésiter.", n: 'Alexandre Rocheleau', r: 'Directeur marketing — Progi' },
@@ -260,7 +260,7 @@ function PresentationPage() {
               {sec.title}
             </div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12 }}>
+          <div className="clients-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12 }}>
             {sec.items.map((it) =>
           <div key={it.name} style={{
             height: 120, borderRadius: 12, background: '#fff',
