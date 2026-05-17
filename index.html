@@ -118,6 +118,13 @@
   .actionbar .btn-orange:hover { background: #ffb532; }
   .actionbar .btn-light { background: rgba(255,255,255,0.08); color: #fff; }
   .actionbar .btn-light:hover { background: rgba(255,255,255,0.14); }
+  .actionbar .action-buttons { display: contents; }
+  .action-more-btn {
+    display: none; align-items: center; justify-content: center;
+    width: 38px; height: 38px; border-radius: 10px;
+    background: rgba(255,255,255,0.08); color: #fff; border: none; cursor: pointer;
+  }
+  .action-more-btn:hover { background: rgba(255,255,255,0.16); }
 
   /* ---------- Misc ---------- */
   .pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: var(--ip-line-2); font-size: 11.5px; font-weight: 500; color: var(--ip-ink-2); }
@@ -229,18 +236,28 @@
     .stable thead th:last-child,
     .stable tbody td:last-child { width: 28px !important; padding: 4px 2px !important; }
 
-    /* Plan header & prices: stack header, keep 3 cols */
+    /* Plan header & prices: switch to flex on mobile so column count matches
+       the actual visible plans (was forced to 3 columns, breaking 2-plan layouts) */
     .plan-header-grid,
     .prices-grid,
     .choice-grid {
-      grid-template-columns: repeat(3, 1fr) !important;
+      display: flex !important;
+      flex-wrap: wrap;
+      grid-template-columns: none !important;
     }
     .plan-header-grid > *:first-child,
     .prices-grid > *:first-child,
     .choice-grid > *:first-child {
-      grid-column: 1 / -1;
+      flex-basis: 100%;
+      grid-column: auto;
       border-right: none !important;
       border-bottom: 1px solid var(--ip-line);
+    }
+    .plan-header-grid > *:not(:first-child),
+    .prices-grid > *:not(:first-child),
+    .choice-grid > *:not(:first-child) {
+      flex: 1 1 0;
+      min-width: 0;
     }
     .prices-grid > *:first-child { padding: 14px 16px !important; }
     /* Plan header cards: smaller text so the 3 columns fit on phone */
@@ -284,6 +301,32 @@
     }
     .actionbar .btn svg { width: 13px; height: 13px; }
 
+    /* Mobile: hide action buttons inline, show via 3-dot menu */
+    .action-more-btn { display: inline-flex; }
+    .actionbar .action-buttons {
+      display: none;
+      position: absolute;
+      bottom: calc(100% + 8px);
+      right: 12px;
+      left: 12px;
+      background: var(--ip-ink);
+      border-radius: 14px;
+      padding: 8px;
+      flex-direction: column;
+      gap: 6px;
+      box-shadow: 0 -8px 24px rgba(0,0,0,0.28);
+      animation: actionMenuIn 0.18s ease;
+    }
+    .actionbar .action-buttons.show { display: flex; }
+    .actionbar .action-buttons .btn {
+      flex: 1 1 100%;
+      width: 100%;
+      min-height: 42px;
+      font-size: 13.5px !important;
+      justify-content: center;
+    }
+    @keyframes actionMenuIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
     /* Envoi page: single column, summary goes below form */
     .envoi-grid { grid-template-columns: 1fr !important; }
     .envoi-grid aside { position: static !important; }
@@ -316,20 +359,28 @@
     .client-banner svg { width: 13px !important; height: 13px !important; }
     .client-banner strong { font-size: 13.5px !important; }
 
-    /* Contact pill — adapt to small screens */
+    /* Contact pill — adapt to small screens: keep it visible but compact at top-right */
     .contact-pill {
       top: auto !important;
-      bottom: 90px !important;
-      right: 8px !important;
-      left: 8px !important;
-      max-width: calc(100vw - 16px);
-      justify-content: center !important;
+      bottom: 96px !important;
+      right: 10px !important;
+      left: auto !important;
+      padding: 5px 8px 5px 6px !important;
+      gap: 6px !important;
     }
     .contact-pill-text { display: none !important; }
-    .contact-pill-icon-main { width: 26px !important; height: 26px !important; }
-    .contact-pill a { width: 36px !important; height: 36px !important; }
+    .contact-pill-icon-main { width: 24px !important; height: 24px !important; }
+    .contact-pill a { width: 30px !important; height: 30px !important; }
 
-    /* Service cards: 1 column on phone */
+    /* Tarifs (Présentation) — stack RDV card under the title text */
+    .tarifs-grid { grid-template-columns: 1fr !important; }
+    .tarifs-grid > div:first-child { padding: 22px !important; }
+    .tarifs-grid > div:first-child > div:first-child { font-size: 22px !important; line-height: 1.2 !important; }
+
+    /* Contact pill — kept visible on mobile, compact (see rule above). */
+
+    /* User-menu pushed to the far right on mobile */
+    [data-user-menu] { margin-left: auto !important; }
     .services-grid { grid-template-columns: 1fr !important; }
     .testimonial-grid { grid-template-columns: 1fr !important; }
     .clients-grid { grid-template-columns: repeat(2, 1fr) !important; }

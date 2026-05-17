@@ -43,6 +43,9 @@ function BrandMark({ size = 38 }) {
 }
 
 // ---------- Contact card — shown at bottom of every tab ----------
+const SMS_BODY = encodeURIComponent("Bonjour, j'aimerais en discuter avec vous — quand seriez-vous disponible pour un échange ? Merci !");
+const SMS_HREF = `sms:+18199952414?&body=${SMS_BODY}`;
+
 function ContactCard({ variant = 'inline' }) {
   const inner = (
     <div style={{
@@ -59,9 +62,9 @@ function ContactCard({ variant = 'inline' }) {
       }}>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
       </div>
-      <div style={{ flex: 1, minWidth: 200 }}>
+      <div style={{ flex: 1, minWidth: 180 }}>
         <div style={{ fontFamily: 'var(--font-serif)', fontSize: 16, fontWeight: 700, color: 'var(--ip-ink)', lineHeight: 1.2 }}>
-          Une question&nbsp;? Contactez-nous à tout moment.
+          Une question&nbsp;? À tout moment.
         </div>
         <div style={{ fontSize: 12, color: 'var(--ip-muted)', marginTop: 3 }}>
           Idriss Sassi, président — réponse rapide garantie.
@@ -69,6 +72,7 @@ function ContactCard({ variant = 'inline' }) {
       </div>
       <a
         href="mailto:idriss@ipropre.ca"
+        title="Écrire un courriel"
         style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '8px 14px', borderRadius: 9, background: '#fff', color: 'var(--ip-ink)', border: '1px solid var(--ip-line)', fontSize: 13, fontWeight: 600, textDecoration: 'none', transition: 'all 0.15s' }}
         onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--ip-orange)'; e.currentTarget.style.color = 'var(--ip-orange)'; }}
         onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--ip-line)'; e.currentTarget.style.color = 'var(--ip-ink)'; }}
@@ -77,12 +81,23 @@ function ContactCard({ variant = 'inline' }) {
         idriss@ipropre.ca
       </a>
       <a
-        href="tel:+18199952414"
-        style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '8px 14px', borderRadius: 9, background: 'var(--ip-ink)', color: '#fff', fontSize: 13, fontWeight: 600, textDecoration: 'none', transition: 'all 0.15s' }}
-        onMouseEnter={(e) => { e.currentTarget.style.background = '#2a2a30'; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--ip-ink)'; }}
+        href={SMS_HREF}
+        title="Envoyer un message texte"
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '8px 14px', borderRadius: 9, background: '#25D366', color: '#fff', border: '1px solid #1ea455', fontSize: 13, fontWeight: 600, textDecoration: 'none', transition: 'all 0.15s' }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = '#1ea455'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = '#25D366'; }}
       >
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        Message texte
+      </a>
+      <a
+        href="tel:+18199952414"
+        title="Appeler"
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '8px 14px', borderRadius: 9, background: 'var(--ip-orange)', color: '#fff', fontSize: 13, fontWeight: 600, textDecoration: 'none', transition: 'all 0.15s' }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = '#d99115'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--ip-orange)'; }}
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
         819 995-2414
       </a>
     </div>
@@ -147,22 +162,18 @@ function ContactPill({ tabKey }) {
         maxWidth: 'calc(100vw - 48px)',
       }}
     >
-      <div className="contact-pill-icon-main" style={{
-        width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
-        background: 'var(--ip-orange)', color: '#fff',
-        display: 'grid', placeItems: 'center',
-      }}>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
-      </div>
-      <div className="contact-pill-text" style={{ fontWeight: 600, color: 'var(--ip-ink)', fontFamily: 'var(--font-serif)', fontSize: 13, whiteSpace: 'nowrap' }}>
-        Contactez-nous à tout moment
+      <div className="contact-pill-text" style={{ fontWeight: 600, color: 'var(--ip-ink)', fontFamily: 'var(--font-serif)', fontSize: 13, whiteSpace: 'nowrap', paddingLeft: 4 }}>
+        À tout moment
       </div>
       <div style={{ display: 'flex', gap: 6, marginLeft: 4 }}>
         <a href="mailto:idriss@ipropre.ca" title="idriss@ipropre.ca" style={{ display: 'inline-grid', placeItems: 'center', width: 28, height: 28, borderRadius: '50%', background: '#fff', color: 'var(--ip-ink)', border: '1px solid var(--ip-line)', textDecoration: 'none' }}>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
         </a>
-        <a href="tel:+18199952414" title="819 995-2414" style={{ display: 'inline-grid', placeItems: 'center', width: 28, height: 28, borderRadius: '50%', background: 'var(--ip-ink)', color: '#fff', textDecoration: 'none' }}>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+        <a href={SMS_HREF} title="Envoyer un message texte" style={{ display: 'inline-grid', placeItems: 'center', width: 28, height: 28, borderRadius: '50%', background: '#25D366', color: '#fff', textDecoration: 'none' }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        </a>
+        <a href="tel:+18199952414" title="819 995-2414" style={{ display: 'inline-grid', placeItems: 'center', width: 28, height: 28, borderRadius: '50%', background: 'var(--ip-orange)', color: '#fff', textDecoration: 'none' }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
         </a>
       </div>
     </div>

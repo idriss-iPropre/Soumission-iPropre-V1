@@ -504,6 +504,79 @@ async function autoDownloadPdf(state, form, initialSnapshot) {
   return ok;
 }
 
+// ---- Standalone contacts (saved manually, no envoi required) ----
+const STANDALONE_CONTACTS_KEY = 'ipropre.contacts.v1';
+function loadStandaloneContacts() {
+  try {
+    const raw = localStorage.getItem(STANDALONE_CONTACTS_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch (e) { return []; }
+}
+function saveStandaloneContact(c) {
+  const list = loadStandaloneContacts();
+  const dedupKey = (c.email || '').toLowerCase().trim()
+    || (((c.clientName||'') + '|' + (c.company||'')).toLowerCase().trim());
+  if (!dedupKey) return false;
+  const idx = list.findIndex(x => {
+    const k = (x.email || '').toLowerCase().trim()
+      || (((x.clientName||'') + '|' + (x.company||'')).toLowerCase().trim());
+    return k === dedupKey;
+  });
+  const entry = {
+    clientName: c.clientName || '',
+    company: c.company || '',
+    email: c.email || '',
+    phone: c.phone || '',
+    address: c.address || '',
+    updatedAt: Date.now(),
+  };
+  if (idx >= 0) list[idx] = entry; else list.unshift(entry);
+  try { localStorage.setItem(STANDALONE_CONTACTS_KEY, JSON.stringify(list)); } catch (e) { return false; }
+  return true;
+}
+Object.assign(window, { loadStandaloneContacts, saveStandaloneContact });
+
+// ---- Load all saved contacts from per-soumission envoi-form slots ----
+// Returns a deduped list (by email, then by name+company) so the user can
+// quickly look up a previous client and pre-fill the form.
+function loadAllSavedContacts() {
+  const out = [];
+  const seen = new Set();
+  const push = (c) => {
+    const hasAny = c.clientName || c.company || c.email || c.phone;
+    if (!hasAny) return;
+    const dedupKey = (c.email || '').toLowerCase().trim()
+      || (((c.clientName||'') + '|' + (c.company||'')).toLowerCase().trim());
+    if (!dedupKey || seen.has(dedupKey)) return;
+    seen.add(dedupKey);
+    out.push({
+      clientName: c.clientName || '',
+      company: c.company || '',
+      email: c.email || '',
+      phone: c.phone || '',
+      address: c.address || '',
+    });
+  };
+  // Standalone (manually saved) contacts first — they're explicitly curated.
+  try { loadStandaloneContacts().forEach(push); } catch (e) {}
+  // Then auto-collected envoi forms.
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key || key.indexOf(ENVOI_FORM_KEY_PREFIX) !== 0) continue;
+      try {
+        const parsed = JSON.parse(localStorage.getItem(key) || '{}');
+        if (parsed) push(parsed);
+      } catch (e) {}
+    }
+  } catch (e) {}
+  out.sort((a, b) => (a.company || a.clientName || '').localeCompare(b.company || b.clientName || '', 'fr'));
+  return out;
+}
+Object.assign(window, { loadAllSavedContacts });
+
 // EnvoiPage component
 function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMeta, isDirty, lastPdfUrl, onGoToSoumission }) {
   const currentSoumId = soumissionMeta?.id || '';
@@ -842,8 +915,49 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
         {isDirty && <DirtyLockBanner onGoToSoumission={onGoToSoumission} />}
         {/* Form */}
         <form className="card card-pad" onSubmit={handleSend}>
-          <div style={{ fontFamily: 'var(--font-serif)', fontSize: 22, fontWeight: 700, marginBottom: 4 }}>Coordonnées du client</div>
-          <div style={{ color: 'var(--ip-muted)', fontSize: 13, marginBottom: 22 }}>Ces champs sont repris en en-tête du PDF généré.</div>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 4, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <div style={{ fontFamily: 'var(--font-serif)', fontSize: 22, fontWeight: 700 }}>Coordonnées du client</div>
+              <div style={{ color: 'var(--ip-muted)', fontSize: 13 }}>Ces champs sont repris en en-tête du PDF généré.</div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  const hasAny = (form.clientName || form.company || form.email || form.phone || form.address);
+                  if (!hasAny) { pushToast('Remplissez au moins un champ avant d\'enregistrer'); return; }
+                  const ok = saveStandaloneContact(form);
+                  if (ok) pushToast('✓ Contact enregistré');
+                  else pushToast('Impossible d\'enregistrer ce contact');
+                }}
+                title="Enregistrer ce contact (même partiellement rempli)"
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  padding: '8px 12px', fontSize: 12.5,
+                  border: '1px solid var(--ip-line)', borderRadius: 9,
+                  background: '#fff', cursor: 'pointer', color: 'var(--ip-ink)', fontWeight: 500,
+                }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+                Enregistrer ce contact
+              </button>
+              <ContactsPicker
+                currentEmail={form.email}
+                onPick={(c) => {
+                  setForm(f => ({
+                    ...f,
+                    clientName: c.clientName || f.clientName,
+                    company: c.company || f.company,
+                    email: c.email || f.email,
+                    phone: c.phone || f.phone,
+                    address: c.address || f.address,
+                  }));
+                  pushToast(`Contact chargé : ${c.clientName || c.company || c.email}`);
+                }}
+              />
+            </div>
+          </div>
+          <div style={{ height: 18 }} />
 
           <div className="two-col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
             <Field label="Nom du contact *" value={form.clientName} onChange={v => setForm(f => ({...f, clientName: v}))} placeholder="Jean Tremblay" required />
@@ -878,22 +992,14 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
 
           <div style={{ display: 'flex', gap: 10, marginTop: 20, flexWrap: 'wrap' }}>
             <button type="submit" className="btn btn-orange" disabled={sending} style={{ opacity: sending ? 0.6 : 1 }}>
-              <Icon.mail /> {sending ? 'Envoi en cours…' : 'Courriel + lien formulaire'}
+              {sending ? <React.Fragment><Icon.mail /> Envoi en cours…</React.Fragment> : <React.Fragment>✉️ Courriel + 📝 Formulaire</React.Fragment>}
             </button>
             <button type="button" className="btn btn-orange" onClick={() => sendWithLink('readonly')} disabled={sending} style={{ opacity: sending ? 0.6 : 1, background: '#5a4d3a' }}>
-              <Icon.mail /> {sending ? '…' : 'Courriel + lien lecture seule'}
+              {sending ? <React.Fragment><Icon.mail /> …</React.Fragment> : <React.Fragment>✉️ Courriel + 👁️ Lien Lecture</React.Fragment>}
             </button>
             <button type="button" className="btn btn-ghost" onClick={handlePdfOnly} disabled={sending}>
-              <Icon.download /> Télécharger PDF seulement
+              ⬇️ PDF
             </button>
-          </div>
-
-          <div style={{ marginTop: 10, padding: '10px 14px', background: '#f6f4ef', borderRadius: 8, fontSize: 12, color: 'var(--ip-muted)', lineHeight: 1.5 }}>
-            <strong style={{ color: 'var(--ip-ink)' }}>Le PDF s'ouvre dans un nouvel onglet</strong> au moment de l'envoi — appuyez sur <strong style={{ color: 'var(--ip-ink)' }}>Cmd/Ctrl + P</strong> puis <em>Enregistrer en PDF</em> pour le joindre au courriel.
-          </div>
-
-          <div style={{ marginTop: 10, padding: '12px 14px', background: '#fffbf0', borderRadius: 8, border: '1px solid #f5d886', fontSize: 12.5, color: '#6b4a0a', lineHeight: 1.55 }}>
-            <strong>À propos de l'envoi :</strong> au moment de l'envoi, un onglet « Aperçu PDF » s'ouvre — utilisez <strong>Imprimer / Enregistrer PDF</strong> (Cmd/Ctrl + P) pour télécharger le PDF, puis joignez-le au courriel pré-rempli avant d'envoyer.
           </div>
         </form>
 
@@ -917,11 +1023,11 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
               <div style={{ display: 'flex', gap: 6 }}>
                 <button type="button" className="btn btn-orange" onClick={handleCopyClientLink} style={{ fontSize: 11.5, flex: 1, justifyContent: 'center', padding: '8px 8px' }} disabled={shortening} title="Lien éditable — le client peut modifier les cellules">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                  {shortening ? 'Génération...' : 'Liens client formulaire'}
+                  {shortening ? '…' : 'Formulaire'}
                 </button>
                 <button type="button" className="btn btn-ghost" onClick={handleCopyReadOnlyLink} style={{ fontSize: 11.5, flex: 1, justifyContent: 'center', padding: '8px 8px', background: '#fff' }} disabled={shortening} title="Lien lecture seule (sans édition)">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                  Liens client lecture seule
+                  Lecture seule
                 </button>
               </div>
               <button type="button" className="btn btn-ghost" onClick={handleOpenClientPreview} style={{ fontSize: 11, justifyContent: 'center', padding: '5px 8px' }}>
@@ -956,6 +1062,115 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
           </div>
         </aside>
       </div>
+    </div>
+  );
+}
+
+function ContactsPicker({ currentEmail, onPick }) {
+  const [open, setOpen] = React.useState(false);
+  const [search, setSearch] = React.useState('');
+  const [contacts, setContacts] = React.useState([]);
+  const wrapRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (open) setContacts(loadAllSavedContacts());
+  }, [open]);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const onDown = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    };
+    window.addEventListener('mousedown', onDown);
+    return () => window.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  const filtered = React.useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return contacts;
+    return contacts.filter(c => (
+      (c.clientName || '').toLowerCase().includes(q)
+      || (c.company || '').toLowerCase().includes(q)
+      || (c.email || '').toLowerCase().includes(q)
+      || (c.phone || '').includes(q)
+    ));
+  }, [contacts, search]);
+
+  return (
+    <div ref={wrapRef} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        title="Charger un contact enregistré"
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+          padding: '8px 12px', fontSize: 12.5,
+          border: '1px solid var(--ip-line)', borderRadius: 9,
+          background: open ? 'var(--ip-line-2)' : '#fff',
+          cursor: 'pointer', color: 'var(--ip-ink)', fontWeight: 500,
+        }}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Contacts enregistrés
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.18s', color: 'var(--ip-muted)' }}><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 60,
+          background: '#fff', border: '1px solid var(--ip-line)', borderRadius: 12,
+          boxShadow: '0 12px 32px rgba(0,0,0,0.14)', width: 320, maxWidth: 'calc(100vw - 40px)', overflow: 'hidden',
+        }}>
+          <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--ip-line-2)' }}>
+            <input
+              autoFocus
+              className="txt-input"
+              placeholder={`Rechercher dans ${contacts.length} contact${contacts.length > 1 ? 's' : ''}…`}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{ fontSize: 12.5 }}
+            />
+          </div>
+          <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+            {filtered.length === 0 ? (
+              <div style={{ padding: '22px 16px', fontSize: 12.5, color: 'var(--ip-muted)', textAlign: 'center', lineHeight: 1.55 }}>
+                {contacts.length === 0
+                  ? <React.Fragment>Aucun contact enregistré pour l'instant.<br/>Les contacts s'ajoutent automatiquement après un envoi.</React.Fragment>
+                  : 'Aucun résultat'}
+              </div>
+            ) : (
+              filtered.map((c, i) => {
+                const isCurrent = (c.email || '').toLowerCase() === (currentEmail || '').toLowerCase() && c.email;
+                return (
+                  <button
+                    type="button"
+                    key={i}
+                    onClick={() => { onPick(c); setOpen(false); setSearch(''); }}
+                    style={{
+                      all: 'unset', cursor: 'pointer', display: 'block', width: '100%', boxSizing: 'border-box',
+                      padding: '10px 14px', borderBottom: '1px solid var(--ip-line-2)',
+                      background: isCurrent ? 'rgba(244,165,28,0.08)' : 'transparent',
+                    }}
+                    onMouseEnter={(e) => { if (!isCurrent) e.currentTarget.style.background = 'var(--ip-bg)'; }}
+                    onMouseLeave={(e) => { if (!isCurrent) e.currentTarget.style.background = 'transparent'; }}
+                  >
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ip-ink)', lineHeight: 1.25, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {c.company || c.clientName || <em style={{ color: 'var(--ip-muted)' }}>Sans nom</em>}
+                      {isCurrent && <span style={{ fontSize: 9.5, padding: '1px 6px', background: 'var(--ip-orange)', color: '#fff', borderRadius: 999, fontFamily: 'var(--font-mono)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>actuel</span>}
+                    </div>
+                    {c.company && c.clientName && (
+                      <div style={{ fontSize: 11.5, color: 'var(--ip-muted)', marginTop: 2 }}>{c.clientName}</div>
+                    )}
+                    <div style={{ fontSize: 11.5, color: 'var(--ip-muted)', marginTop: 3, fontFamily: 'var(--font-mono)', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                      {c.email && <span>{c.email}</span>}
+                      {c.phone && <span>{c.phone}</span>}
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -131,7 +131,7 @@ function ChangeIndicator({ kind }) {
 }
 
 
-function SoumissionPage({ state, setState, pushToast, history, undo, future, redo, clientMode = false, clientEditable = false, initialSnapshot = null, templates = null }) {
+function SoumissionPage({ state, setState, pushToast, history, undo, future, redo, clientMode = false, clientEditable = false, initialSnapshot = null, templates = null, onNewSoumission, onQuickSave, isDirty }) {
   // Templates dropdown (vendor side only)
   const [templatesOpen, setTemplatesOpen] = React.useState(false);
   const [savingTemplate, setSavingTemplate] = React.useState(false);
@@ -290,6 +290,26 @@ function SoumissionPage({ state, setState, pushToast, history, undo, future, red
           <p className="sub">Ajoutez ou supprimez des lignes par service. Chaque case propose des options ou un champ libre « Personnaliser ».</p>
         </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          {!ro && onNewSoumission && (
+            <button
+              onClick={onNewSoumission}
+              title="Démarrer une nouvelle soumission"
+              style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 34, height: 34, border: 'none', borderRadius: 8, background: 'var(--ip-orange)', color: '#fff', cursor: 'pointer', fontWeight: 600 }}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </button>
+          )}
+          {!ro && onQuickSave && (
+            <button
+              onClick={onQuickSave}
+              title="Enregistrer cette soumission"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 12px', fontSize: 12.5, border: '1px solid var(--ip-line)', borderRadius: 8, background: '#fff', cursor: 'pointer', color: 'var(--ip-ink)', fontWeight: isDirty ? 600 : 500, height: 34, boxSizing: 'border-box' }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+              Enregistrer
+              {isDirty && <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--ip-orange)', marginLeft: 2 }} />}
+            </button>
+          )}
           {!ro &&
           <React.Fragment>
           <button className="btn-icon" onClick={undo} disabled={!history || history.length === 0} style={{ opacity: !history || history.length === 0 ? 0.35 : 1, width: 34, height: 34, position: 'relative' }} title={`Annuler la dernière action${history && history.length > 0 ? ' (' + history.length + ')' : ''}`}>
@@ -307,7 +327,7 @@ function SoumissionPage({ state, setState, pushToast, history, undo, future, red
           </button>
           {!ro &&
           <button className="btn btn-ghost" onClick={addSection} style={{ padding: '7px 12px', fontSize: 12.5 }}>
-            <Icon.plus /> Ajouter un service
+            <Icon.plus /> service
           </button>
           }
           {!ro && templates && (
@@ -316,12 +336,11 @@ function SoumissionPage({ state, setState, pushToast, history, undo, future, red
                 ref={templatesBtnRef}
                 className="btn btn-ghost"
                 onClick={() => setTemplatesOpen(o => !o)}
-                style={{ padding: '7px 12px', fontSize: 12.5, background: templatesOpen ? 'var(--ip-line-2)' : '#fff', borderColor: templatesOpen ? 'var(--ip-ink)' : 'var(--ip-line)', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                style={{ padding: '7px 10px', fontSize: 12.5, background: templatesOpen ? 'var(--ip-line-2)' : '#fff', borderColor: templatesOpen ? 'var(--ip-ink)' : 'var(--ip-line)', display: 'inline-flex', alignItems: 'center', gap: 4 }}
                 title="Modèles de soumission"
               >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-                Modèles
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 2, transform: templatesOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.18s', color: 'var(--ip-muted)' }}><polyline points="6 9 12 15 18 9"/></svg>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: templatesOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.18s', color: 'var(--ip-muted)' }}><polyline points="6 9 12 15 18 9"/></svg>
               </button>
               {templatesOpen && (
                 <div id="templates-dropdown" style={{

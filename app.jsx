@@ -601,6 +601,15 @@ function App() {
   }
 
   const [userMenuOpen, setUserMenuOpen] = React.useState(false);
+  const [actionMenuOpen, setActionMenuOpen] = React.useState(false);
+  React.useEffect(() => {
+    if (!actionMenuOpen) return;
+    const onDown = (e) => {
+      if (!e.target.closest || !e.target.closest('[data-action-menu]')) setActionMenuOpen(false);
+    };
+    window.addEventListener('mousedown', onDown);
+    return () => window.removeEventListener('mousedown', onDown);
+  }, [actionMenuOpen]);
   React.useEffect(() => {
     if (!userMenuOpen) return;
     const onDown = (e) => {
@@ -635,18 +644,6 @@ function App() {
             ))}
           </nav>
           <div className="topbar-actions" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            {!clientMode && (
-              <div className="btn-pair" style={{ display: 'inline-flex', alignItems: 'stretch', gap: 6 }}>
-                <button onClick={handleNewSoumission} title="Démarrer une nouvelle soumission" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, fontSize: 16, border: 'none', borderRadius: 8, background: 'var(--ip-orange)', color: '#fff', cursor: 'pointer', fontWeight: 600 }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                </button>
-                <button onClick={handleQuickSave} title="Enregistrer cette soumission" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 12px', fontSize: 12.5, border: '1px solid var(--ip-line)', borderRadius: 8, background: '#fff', cursor: 'pointer', color: 'var(--ip-ink)', fontWeight: isDirty ? 600 : 400, height: 32, boxSizing: 'border-box' }}>
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-                  Enregistrer
-                  {isDirty && <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--ip-orange)', marginLeft: 2 }} />}
-                </button>
-              </div>
-            )}
           </div>
           {!clientMode ? (
             <div data-user-menu style={{ position: 'relative' }}>
@@ -745,7 +742,7 @@ function App() {
           </div>
         )}
         {tab === 'presentation' && <PresentationPage />}
-        {tab === 'soumission' && <SoumissionPage state={state} setState={setState} pushToast={toastFn} history={history} undo={undo} future={future} redo={redo} clientMode={clientMode} clientEditable={clientEditable} initialSnapshot={initialSnapshot} templates={templates} />}
+        {tab === 'soumission' && <SoumissionPage state={state} setState={setState} pushToast={toastFn} history={history} undo={undo} future={future} redo={redo} clientMode={clientMode} clientEditable={clientEditable} initialSnapshot={initialSnapshot} templates={templates} onNewSoumission={handleNewSoumission} onQuickSave={handleQuickSave} isDirty={isDirty} />}
         {tab === 'galerie' && <GaleriePage />}
         {tab === 'annexes' && <AnnexesPage />}
         {tab === 'envoi' && (
@@ -792,18 +789,19 @@ function App() {
             </div>
           </div>
           <div className="spacer" />
+          <div data-action-menu className={`action-buttons ${actionMenuOpen ? 'show' : ''}`}>
           {tab !== 'soumission' && (
-            <button className="btn btn-light" onClick={() => setTab('soumission')}>
+            <button className="btn btn-light" onClick={() => { setTab('soumission'); setActionMenuOpen(false); }}>
               <Icon.edit /> Modifier le devis
             </button>
           )}
-          <button className="btn btn-light" onClick={handleQuickPdf} title="G\u00e9n\u00e9rer le PDF de l'offre">
+          <button className="btn btn-light" onClick={() => { handleQuickPdf(); setActionMenuOpen(false); }} title="G\u00e9n\u00e9rer le PDF de l'offre">
             <Icon.download /> Offre en PDF
           </button>
           {!clientMode && (
             <button
               className="btn btn-light"
-              onClick={handleQuickDocx}
+              onClick={() => { handleQuickDocx(); setActionMenuOpen(false); }}
               title="Convertir en Google Docs / .docx sur Drive"
               style={{ padding: '8px 12px', display: 'inline-flex', alignItems: 'center', gap: 6 }}
             >
@@ -819,10 +817,20 @@ function App() {
             </button>
           )}
           {tab !== 'envoi' && !clientMode && (
-            <button className="btn btn-orange" onClick={() => setTab('envoi')}>
+            <button className="btn btn-orange" onClick={() => { setTab('envoi'); setActionMenuOpen(false); }}>
               <Icon.mail /> Envoyer l'offre <Icon.arrow />
             </button>
           )}
+          </div>
+          <button
+            data-action-menu
+            className="action-more-btn"
+            onClick={() => setActionMenuOpen(o => !o)}
+            title="Actions"
+            aria-label="Plus d'actions"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+          </button>
         </div>
       </main>
 

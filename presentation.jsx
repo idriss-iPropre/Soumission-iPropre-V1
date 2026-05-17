@@ -122,7 +122,7 @@ function PresentationPage() {
       {/* 03 — Tarifs */}
       <SectionTitle label="03 — Notre approche tarifaire" color="var(--ip-orange)" />
       <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 28, background: 'linear-gradient(135deg, #fff 0%, var(--ip-orange-soft) 100%)' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(220px, 280px)', gap: 0, alignItems: 'stretch' }}>
+        <div className="tarifs-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(220px, 280px)', gap: 0, alignItems: 'stretch' }}>
           <div style={{ padding: '32px 32px 32px 32px' }}>
             <div style={{ fontFamily: 'var(--font-serif)', fontSize: 28, fontWeight: 700, letterSpacing: '-0.01em', marginBottom: 10 }}>
               Le meilleur service au juste prix — <span style={{ color: 'var(--ip-orange)' }}>garanti</span>.
