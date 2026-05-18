@@ -16,18 +16,31 @@ const THEMES = {
 
 // --- Client mode helpers (lien partagé) ---
 // Encode/decode soumission state in URL for read-only client preview link.
+// Uses LZ-string compression (when available) for much shorter URLs — typically
+// 70%+ smaller, so the resulting link fits within is.gd's 5000-char limit.
+// Format: starts with "c1." → compressed (encodeURIComponent-safe LZ-string),
+//         otherwise plain base64 (legacy decoder still understands these).
 function encodeStateToUrl(state, clientName) {
   try {
     const payload = { state, clientName: clientName || '', t: Date.now() };
     const json = JSON.stringify(payload);
-    // UTF-8 safe base64
+    if (typeof LZString !== 'undefined' && LZString.compressToEncodedURIComponent) {
+      const compressed = LZString.compressToEncodedURIComponent(json);
+      if (compressed) return 'c1.' + compressed;
+    }
+    // Fallback: original UTF-8-safe base64 (URL-safe variant)
     const b64 = btoa(unescape(encodeURIComponent(json)));
-    // URL-safe variant
     return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   } catch (e) { return ''; }
 }
 function decodeStateFromUrl(s) {
   try {
+    // Compressed format
+    if (s.indexOf('c1.') === 0 && typeof LZString !== 'undefined') {
+      const json = LZString.decompressFromEncodedURIComponent(s.slice(3));
+      if (json) return JSON.parse(json);
+    }
+    // Legacy base64
     let b64 = s.replace(/-/g, '+').replace(/_/g, '/');
     while (b64.length % 4) b64 += '=';
     const json = decodeURIComponent(escape(atob(b64)));
@@ -277,6 +290,15 @@ function App() {
     const t = THEMES[tweaks.theme] || THEMES.signature;
     for (const [k, v] of Object.entries(t)) document.documentElement.style.setProperty(k, v);
   }, [tweaks.theme]);
+
+  // One-time pull of cross-device contacts on startup (vendor mode only).
+  // Silent — failures are fine; the picker pulls again when opened.
+  React.useEffect(() => {
+    if (clientMode) return;
+    if (typeof window.syncContactsFromCloud === 'function') {
+      window.syncContactsFromCloud().catch(() => {});
+    }
+  }, [clientMode]);
 
   // Push current state to Google Sheets + Drive PDF.
   // Returns a promise that resolves with the Drive PDF URL (if any).

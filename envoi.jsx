@@ -505,6 +505,7 @@ async function autoDownloadPdf(state, form, initialSnapshot) {
 }
 
 // ---- Standalone contacts (saved manually, no envoi required) ----
+// Synced to Google Sheets when available (cross-device sharing).
 const STANDALONE_CONTACTS_KEY = 'ipropre.contacts.v1';
 function loadStandaloneContacts() {
   try {
@@ -514,17 +515,23 @@ function loadStandaloneContacts() {
     return Array.isArray(arr) ? arr : [];
   } catch (e) { return []; }
 }
+function persistStandaloneContacts(list) {
+  try { localStorage.setItem(STANDALONE_CONTACTS_KEY, JSON.stringify(list)); } catch (e) {}
+}
+// Build a dedup key for a contact — email if present, else name+company.
+function contactKey(c) {
+  return (c.email || '').toLowerCase().trim()
+    || (((c.clientName||'') + '|' + (c.company||'')).toLowerCase().trim());
+}
 function saveStandaloneContact(c) {
   const list = loadStandaloneContacts();
-  const dedupKey = (c.email || '').toLowerCase().trim()
-    || (((c.clientName||'') + '|' + (c.company||'')).toLowerCase().trim());
+  const dedupKey = contactKey(c);
   if (!dedupKey) return false;
-  const idx = list.findIndex(x => {
-    const k = (x.email || '').toLowerCase().trim()
-      || (((x.clientName||'') + '|' + (x.company||'')).toLowerCase().trim());
-    return k === dedupKey;
-  });
+  const idx = list.findIndex(x => contactKey(x) === dedupKey);
+  // Reuse existing id if found, otherwise generate a fresh one
+  const id = (idx >= 0 && list[idx].id) ? list[idx].id : ('c_' + Date.now().toString(36) + Math.random().toString(36).slice(2,6));
   const entry = {
+    id,
     clientName: c.clientName || '',
     company: c.company || '',
     email: c.email || '',
@@ -533,10 +540,57 @@ function saveStandaloneContact(c) {
     updatedAt: Date.now(),
   };
   if (idx >= 0) list[idx] = entry; else list.unshift(entry);
-  try { localStorage.setItem(STANDALONE_CONTACTS_KEY, JSON.stringify(list)); } catch (e) { return false; }
+  persistStandaloneContacts(list);
+  // Fire-and-forget push to Google Sheets (cross-device sync)
+  if (window.repo && window.repo.Contacts) {
+    window.repo.Contacts.save({ ...entry, updatedAt: new Date(entry.updatedAt).toISOString() }).catch(() => {});
+  }
   return true;
 }
-Object.assign(window, { loadStandaloneContacts, saveStandaloneContact });
+// Pull contacts from Google Sheets, merge with local — newer updatedAt wins per id.
+async function syncContactsFromCloud() {
+  if (!window.repo || !window.repo.Contacts) return null;
+  try {
+    const remote = await window.repo.Contacts.list();
+    if (!Array.isArray(remote)) return null;
+    const local = loadStandaloneContacts();
+    const merged = new Map();
+    // Index by dedup key — id from sheet, fallback to dedup
+    const tsOf = (x) => {
+      const v = x.updatedAt;
+      if (!v) return 0;
+      if (typeof v === 'number') return v;
+      const t = Date.parse(v); return isNaN(t) ? 0 : t;
+    };
+    for (const c of local) {
+      const k = contactKey(c) || c.id;
+      if (!k) continue;
+      merged.set(k, { ...c, updatedAt: tsOf(c) });
+    }
+    for (const r of remote) {
+      const k = contactKey(r) || r.id;
+      if (!k) continue;
+      const existing = merged.get(k);
+      const rEntry = {
+        id: r.id || ('c_' + Date.now().toString(36) + Math.random().toString(36).slice(2,6)),
+        clientName: r.clientName || '',
+        company: r.company || '',
+        email: r.email || '',
+        phone: r.phone || '',
+        address: r.address || '',
+        updatedAt: tsOf(r),
+      };
+      if (!existing || tsOf(rEntry) >= tsOf(existing)) merged.set(k, rEntry);
+    }
+    const out = Array.from(merged.values()).filter(c => c.clientName || c.company || c.email || c.phone);
+    out.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    persistStandaloneContacts(out);
+    return out;
+  } catch (e) {
+    return null;
+  }
+}
+Object.assign(window, { loadStandaloneContacts, saveStandaloneContact, syncContactsFromCloud });
 
 // ---- Load all saved contacts from per-soumission envoi-form slots ----
 // Returns a deduped list (by email, then by name+company) so the user can
@@ -794,14 +848,18 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
     }
   };
 
-  // Try to shorten via is.gd then v.gd. Both are CORS-enabled.
+  // Try multiple shortener services in order — first one that succeeds wins.
+  // All three are CORS-enabled GET endpoints.
   const shortenUrl = async (longUrl) => {
-    // is.gd / v.gd both have ~5000 char URL limits; skip if too long.
-    if (longUrl.length > 4800) return null;
-    const endpoints = [
-      `https://is.gd/create.php?format=json&url=${encodeURIComponent(longUrl)}`,
-      `https://v.gd/create.php?format=json&url=${encodeURIComponent(longUrl)}`,
-    ];
+    if (!longUrl) return null;
+    // is.gd / v.gd cap at ~5000 chars; tinyurl can take longer URLs.
+    const endpoints = [];
+    if (longUrl.length <= 4800) {
+      endpoints.push(`https://is.gd/create.php?format=json&url=${encodeURIComponent(longUrl)}`);
+      endpoints.push(`https://v.gd/create.php?format=json&url=${encodeURIComponent(longUrl)}`);
+    }
+    // TinyURL fallback — accepts longer URLs, returns plain-text short URL.
+    const tinyEndpoint = `https://tinyurl.com/api-create.php?url=${encodeURIComponent(longUrl)}`;
     for (const api of endpoints) {
       try {
         const resp = await fetch(api);
@@ -809,6 +867,11 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
         if (data.shorturl) return data.shorturl;
       } catch (e) {}
     }
+    try {
+      const resp = await fetch(tinyEndpoint);
+      const text = await resp.text();
+      if (text && text.startsWith('http')) return text.trim();
+    } catch (e) {}
     return null;
   };
 
@@ -1070,10 +1133,19 @@ function ContactsPicker({ currentEmail, onPick }) {
   const [open, setOpen] = React.useState(false);
   const [search, setSearch] = React.useState('');
   const [contacts, setContacts] = React.useState([]);
+  const [syncing, setSyncing] = React.useState(false);
   const wrapRef = React.useRef(null);
 
   React.useEffect(() => {
-    if (open) setContacts(loadAllSavedContacts());
+    if (!open) return;
+    // Show local list immediately, then refresh from cloud in background
+    setContacts(loadAllSavedContacts());
+    let cancelled = false;
+    setSyncing(true);
+    syncContactsFromCloud().then(() => {
+      if (!cancelled) setContacts(loadAllSavedContacts());
+    }).finally(() => { if (!cancelled) setSyncing(false); });
+    return () => { cancelled = true; };
   }, [open]);
 
   React.useEffect(() => {
@@ -1115,20 +1187,30 @@ function ContactsPicker({ currentEmail, onPick }) {
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.18s', color: 'var(--ip-muted)' }}><polyline points="6 9 12 15 18 9"/></svg>
       </button>
       {open && (
-        <div style={{
-          position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 60,
-          background: '#fff', border: '1px solid var(--ip-line)', borderRadius: 12,
-          boxShadow: '0 12px 32px rgba(0,0,0,0.14)', width: 320, maxWidth: 'calc(100vw - 40px)', overflow: 'hidden',
-        }}>
-          <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--ip-line-2)' }}>
+        <div
+          className="contacts-picker-dropdown"
+          style={{
+            position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 60,
+            background: '#fff', border: '1px solid var(--ip-line)', borderRadius: 12,
+            boxShadow: '0 12px 32px rgba(0,0,0,0.14)', width: 320, overflow: 'hidden',
+          }}
+        >
+          <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--ip-line-2)', display: 'flex', gap: 6, alignItems: 'center' }}>
             <input
               autoFocus
               className="txt-input"
               placeholder={`Rechercher dans ${contacts.length} contact${contacts.length > 1 ? 's' : ''}…`}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              style={{ fontSize: 12.5 }}
+              style={{ fontSize: 12.5, flex: 1 }}
             />
+            {syncing && (
+              <span title="Synchronisation en cours…" style={{ display: 'inline-grid', placeItems: 'center', width: 24, height: 24 }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--ip-orange)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ animation: 'spin 1.1s linear infinite' }}>
+                  <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                </svg>
+              </span>
+            )}
           </div>
           <div style={{ maxHeight: 320, overflowY: 'auto' }}>
             {filtered.length === 0 ? (

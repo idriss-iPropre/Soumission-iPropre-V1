@@ -332,6 +332,34 @@
     .envoi-grid aside { position: static !important; }
     .envoi-grid .two-col { grid-template-columns: 1fr !important; }
     .card-pad { padding: 18px !important; }
+    /* Envoi mobile: make all action buttons full-width and easier to tap */
+    .envoi-grid form > div:last-of-type button,
+    .envoi-grid form button.btn-orange,
+    .envoi-grid form button.btn-ghost {
+      flex: 1 1 100% !important;
+      width: 100%;
+      justify-content: center !important;
+      min-height: 44px;
+      padding: 11px 14px !important;
+      font-size: 13.5px !important;
+    }
+    /* Header row of Envoi form (title + 2 contact buttons) should stack on phones */
+    .envoi-grid form > div:first-child {
+      flex-direction: column !important;
+      align-items: stretch !important;
+    }
+    .envoi-grid form > div:first-child > div:first-child { width: 100%; }
+    .envoi-grid form > div:first-child > div:last-child {
+      width: 100%;
+      display: flex !important;
+    }
+    .envoi-grid form > div:first-child > div:last-child > button {
+      flex: 1 1 50%;
+      justify-content: center !important;
+      min-height: 42px;
+      padding: 10px 8px !important;
+      font-size: 12.5px !important;
+    }
 
     /* Présentation hero strip: stack logo, content */
     .presentation-hero { padding: 18px 18px !important; }
@@ -359,17 +387,29 @@
     .client-banner svg { width: 13px !important; height: 13px !important; }
     .client-banner strong { font-size: 13.5px !important; }
 
-    /* Contact pill — adapt to small screens: keep it visible but compact at top-right */
+    /* Contacts picker on mobile — pin to viewport, not the button (avoids off-screen overflow) */
+    .contacts-picker-dropdown {
+      position: fixed !important;
+      top: 88px !important;
+      right: 12px !important;
+      left: 12px !important;
+      width: auto !important;
+      max-width: none !important;
+    }
+
+    /* Contact pill — on mobile, anchor it at the TOP of the page (just under the topbar)
+       rather than floating near the action bar. Smaller + flush right. */
     .contact-pill {
-      top: auto !important;
-      bottom: 96px !important;
+      top: 110px !important;
+      bottom: auto !important;
       right: 10px !important;
       left: auto !important;
-      padding: 5px 8px 5px 6px !important;
+      padding: 4px 8px 4px 6px !important;
       gap: 6px !important;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.10) !important;
     }
     .contact-pill-text { display: none !important; }
-    .contact-pill-icon-main { width: 24px !important; height: 24px !important; }
+    .contact-pill-icon-main { display: none !important; }
     .contact-pill a { width: 30px !important; height: 30px !important; }
 
     /* Tarifs (Présentation) — stack RDV card under the title text */
@@ -417,6 +457,9 @@
 
 <!-- PDF generation (html → PDF binary, for Drive upload) -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+<!-- LZ-String — compress soumission state for short shareable links -->
+<script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
 
 <!-- Core (plain JS, no Babel) — backend client + repositories. Load BEFORE the JSX modules. -->
 <script src="core/api.js?v=1"></script>

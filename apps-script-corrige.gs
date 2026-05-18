@@ -22,6 +22,7 @@ const SHEET_SCHEMAS = {
   'Activite':      ['date','linkId','soumissionId','type','details'],
   'Pdfs':          ['id','soumissionId','dateCreation','nomFichier','pdfUrl','label','trigger'],
   'Docx':          ['id','soumissionId','dateCreation','nomFichier','docUrl','docxUrl','label','trigger'],
+  'Contacts':      ['id','clientName','company','email','phone','address','updatedAt','notes'],
 };
 
 // REST-style router : action = resource.method
@@ -53,6 +54,10 @@ const ROUTES = {
 
   'docx.upload':           (ss, p) => uploadDocx(ss, p),
   'docx.list':             (ss, p) => list(ss, 'Docx').filter(r => !p.soumissionId || r.soumissionId === p.soumissionId),
+
+  'contacts.list':         (ss, p) => list(ss, 'Contacts'),
+  'contacts.save':         (ss, p) => upsert(ss, 'Contacts', 'id', p),
+  'contacts.delete':       (ss, p) => remove(ss, 'Contacts', 'id', p.id),
 };
 
 function doGet(e)  { return handle(e); }
