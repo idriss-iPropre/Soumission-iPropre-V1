@@ -762,19 +762,12 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
       pushToast('Ouverture du PDF…');
       openPdfWindow();
 
-      // 2) Generate the internal short link (server-stored ID). If unavailable,
-      //    fall back to is.gd/v.gd/tinyurl shortening of the long URL.
+      // 2) Generate the internal short link (server-stored ID).
       const editable = linkMode === 'edit';
-      let finalUrl = await createShortLink(editable);
+      const finalUrl = await createShortLink(editable);
       if (!finalUrl) {
-        pushToast('Erreur lors de la génération du lien');
+        pushToast('Erreur : Apps Script non joignable — lien non généré');
         return;
-      }
-      const isInternalShort = finalUrl.includes('&s=') && finalUrl.includes('mode=client');
-      // If we got the long-URL fallback, try external shorteners to keep it tidy.
-      if (!isInternalShort) {
-        const external = await shortenUrl(finalUrl);
-        if (external) finalUrl = external;
       }
 
       // 3) record the sent link
@@ -927,15 +920,9 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
   const handleCopyClientLink = async () => {
     setShortening(true);
     pushToast('Génération du lien court…');
-    let url = await createShortLink(true);
-    if (!url) { setShortening(false); pushToast('Erreur lors de la génération du lien'); return; }
-    const isInternalShort = url.includes('&s=');
-    if (!isInternalShort) {
-      // Fall back to external shortener if we couldn't use the internal one
-      const external = await shortenUrl(url);
-      if (external) url = external;
-    }
+    const url = await createShortLink(true);
     setShortening(false);
+    if (!url) { pushToast('Erreur : Apps Script non joignable'); return; }
     copyToClipboard(url, `Lien client copié : ${url}`);
     const reference = buildLongUrl(undefined, { editable: true });
     recordSentLink({ url: reference, shortUrl: url !== reference ? url : '' });
@@ -950,21 +937,16 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
 
   const handleOpenClientPreview = async () => {
     const url = await createShortLink(true);
-    if (!url) { pushToast('Erreur : encodeur indisponible'); return; }
+    if (!url) { pushToast('Erreur : Apps Script non joignable'); return; }
     window.open(url, '_blank');
   };
 
   const handleCopyReadOnlyLink = async () => {
     setShortening(true);
     pushToast('Génération du lien court…');
-    let url = await createShortLink(false);
-    if (!url) { setShortening(false); pushToast('Erreur lors de la génération du lien'); return; }
-    const isInternalShort = url.includes('&s=');
-    if (!isInternalShort) {
-      const external = await shortenUrl(url);
-      if (external) url = external;
-    }
+    const url = await createShortLink(false);
     setShortening(false);
+    if (!url) { pushToast('Erreur : Apps Script non joignable'); return; }
     copyToClipboard(url, `Lien lecture seule copié : ${url}`);
   };
 
