@@ -147,5 +147,22 @@
     async delete(id) { return api.call('contacts.delete', { id }); },
   };
 
-  window.repo = { Soumissions, Versions, Liens, Envois, Activite, Pdfs, Docx, Contacts, uuid, now };
+  // ---------- ShortLinks (lien court interne stocké côté serveur) ----------
+  // Stocke l'état d'une soumission encodé (LZ-string compressé) sous un
+  // shortId aléatoire de 5 caractères. Le client reçoit une URL ultra-courte
+  // genre `?mode=client&s=iP9k2` qui pointe directement vers l'app.
+  const ShortLinks = {
+    async create({ soumissionId, clientName, editable, dataJSON, linkId }) {
+      return api.call('shortlinks.create', {
+        soumissionId: soumissionId || '',
+        clientName: clientName || '',
+        editable: !!editable,
+        dataJSON: dataJSON || '',
+        linkId: linkId || '',
+      });
+    },
+    async resolve(shortId) { return api.call('shortlinks.resolve', { shortId }); },
+  };
+
+  window.repo = { Soumissions, Versions, Liens, Envois, Activite, Pdfs, Docx, Contacts, ShortLinks, uuid, now };
 })();
