@@ -23,6 +23,7 @@ const SHEET_SCHEMAS = {
   'Pdfs':          ['id','soumissionId','dateCreation','nomFichier','pdfUrl','label','trigger'],
   'Docx':          ['id','soumissionId','dateCreation','nomFichier','docUrl','docxUrl','label','trigger'],
   'Contacts':      ['id','clientName','company','email','phone','address','updatedAt','notes'],
+  'ShortLinks':    ['shortId','soumissionId','clientName','editable','dataJSON','createdAt','linkId'],
 };
 
 // REST-style router : action = resource.method
@@ -58,7 +59,40 @@ const ROUTES = {
   'contacts.list':         (ss, p) => list(ss, 'Contacts'),
   'contacts.save':         (ss, p) => upsert(ss, 'Contacts', 'id', p),
   'contacts.delete':       (ss, p) => remove(ss, 'Contacts', 'id', p.id),
+
+  'shortlinks.create':     (ss, p) => createShortLink(ss, p),
+  'shortlinks.resolve':    (ss, p) => find(ss, 'ShortLinks', 'shortId', p.shortId),
 };
+
+// ---------- Short link helpers ----------
+// Generate a 5-char URL-safe random ID and ensure it's unique in the ShortLinks tab.
+function _genShortId() {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+  let s = '';
+  for (let i = 0; i < 5; i++) s += alphabet.charAt(Math.floor(Math.random() * alphabet.length));
+  return s;
+}
+function createShortLink(ss, p) {
+  if (!p.dataJSON) throw new Error('shortlinks.create: dataJSON manquant');
+  let shortId;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    shortId = _genShortId();
+    const existing = find(ss, 'ShortLinks', 'shortId', shortId);
+    if (!existing) break;
+    if (attempt === 7) shortId = _genShortId() + _genShortId().charAt(0); // 6-char fallback
+  }
+  const row = {
+    shortId,
+    soumissionId: p.soumissionId || '',
+    clientName: p.clientName || '',
+    editable: p.editable ? 'true' : 'false',
+    dataJSON: p.dataJSON,
+    createdAt: new Date().toISOString(),
+    linkId: p.linkId || '',
+  };
+  append(ss, 'ShortLinks', row);
+  return { shortId, editable: row.editable === 'true' };
+}
 
 function doGet(e)  { return handle(e); }
 function doPost(e) { return handle(e); }

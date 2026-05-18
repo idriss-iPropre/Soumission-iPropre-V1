@@ -50,13 +50,41 @@ function decodeStateFromUrl(s) {
 function detectClientMode() {
   const params = new URLSearchParams(window.location.search);
   if (params.get('mode') !== 'client') return null;
+  const linkId = params.get('lid') || null;
+  const editable = params.get('edit') === '1';
+
+  // 1. Short-link mode: ?mode=client&s=<id>  — state needs to be fetched async.
+  const shortId = params.get('s');
+  if (shortId) {
+    return { pendingShortId: shortId, editable: editable || params.get('e') === '1', linkId };
+  }
+
+  // 2. Inline data mode (legacy): ?mode=client&data=<base64-or-lzstring>
   const data = params.get('data');
   if (!data) return null;
   const decoded = decodeStateFromUrl(data);
   if (!decoded) return null;
-  const linkId = params.get('lid') || null;
-  const editable = params.get('edit') === '1';
   return { ...decoded, linkId, editable };
+}
+
+// Resolve a short-link to its full payload via the backend.
+async function resolveShortLink(shortId) {
+  if (!window.repo || !window.repo.ShortLinks) return null;
+  try {
+    const row = await window.repo.ShortLinks.resolve(shortId);
+    if (!row || !row.dataJSON) return null;
+    // The stored dataJSON was produced by encodeStateToUrl — decode it.
+    const decoded = decodeStateFromUrl(row.dataJSON);
+    if (!decoded) return null;
+    return {
+      state: decoded.state,
+      clientName: decoded.clientName || row.clientName || '',
+      editable: String(row.editable) === 'true',
+    };
+  } catch (e) {
+    console.warn('resolveShortLink failed:', e);
+    return null;
+  }
 }
 
 // Service icons keyed by section id — replaces the iPropre logo next to each
@@ -156,9 +184,42 @@ function App() {
   // Detect client mode FIRST (read-only shared-link view)
   const clientPayload = React.useMemo(() => detectClientMode(), []);
   const clientMode = !!clientPayload;
-  const clientEditable = !!clientPayload?.editable;
-  const initialClientState = clientPayload?.state || null;
-  const clientLinkId = clientPayload?.linkId || null;
+  // Short-link async loading (when URL is ?mode=client&s=<id>)
+  const [shortLoadState, setShortLoadState] = React.useState(
+    clientPayload?.pendingShortId ? { loading: true, error: null, data: null } : null
+  );
+  React.useEffect(() => {
+    if (!clientPayload?.pendingShortId) return;
+    let cancelled = false;
+    resolveShortLink(clientPayload.pendingShortId).then(result => {
+      if (cancelled) return;
+      if (!result) {
+        setShortLoadState({ loading: false, error: 'Lien introuvable ou expiré.', data: null });
+      } else {
+        setShortLoadState({ loading: false, error: null, data: result });
+      }
+    });
+    return () => { cancelled = true; };
+  }, [clientPayload?.pendingShortId]);
+
+  // Resolve effective client payload (short-link mode merges in fetched data)
+  const effectiveClientPayload = React.useMemo(() => {
+    if (!clientPayload) return null;
+    if (clientPayload.pendingShortId) {
+      if (!shortLoadState || shortLoadState.loading || shortLoadState.error) return null;
+      return {
+        state: shortLoadState.data.state,
+        clientName: shortLoadState.data.clientName,
+        editable: clientPayload.editable || shortLoadState.data.editable,
+        linkId: clientPayload.linkId,
+      };
+    }
+    return clientPayload;
+  }, [clientPayload, shortLoadState]);
+
+  const clientEditable = !!effectiveClientPayload?.editable;
+  const initialClientState = effectiveClientPayload?.state || null;
+  const clientLinkId = effectiveClientPayload?.linkId || null;
   // If client mode + linkId is revoked locally → show revoked screen instead of soumission
   const linkRevoked = clientMode && clientLinkId && typeof window.isLinkRevoked === 'function' && window.isLinkRevoked(clientLinkId);
 
@@ -580,6 +641,46 @@ function App() {
   const totalLines = state.sections.reduce((a, s) => a + s.rows.length, 0);
   const plan = state.selectedPlan != null ? PLAN_DEFS[state.selectedPlan] : null;
   const price = state.selectedPlan != null ? state.prices[state.selectedPlan] : null;
+
+  // ---------- Short-link loading / error screen (client mode only) ----------
+  if (clientMode && clientPayload.pendingShortId) {
+    if (!shortLoadState || shortLoadState.loading) {
+      return (
+        <div style={{
+          minHeight: '100vh', display: 'grid', placeItems: 'center',
+          background: 'linear-gradient(180deg, #faf6ef 0%, #f0eadf 100%)',
+          padding: 24,
+        }}>
+          <div className="card card-pad" style={{ maxWidth: 420, textAlign: 'center', padding: 48, background: '#fff' }}>
+            <div style={{ width: 56, height: 56, margin: '0 auto 18px', borderRadius: '50%', background: 'rgba(244,165,28,0.10)', display: 'grid', placeItems: 'center' }}>
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--ip-orange)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ animation: 'spin 1.1s linear infinite' }}>
+                <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+              </svg>
+            </div>
+            <div style={{ fontFamily: 'var(--font-serif)', fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Chargement de votre soumission…</div>
+            <div style={{ fontSize: 13, color: 'var(--ip-muted)' }}>Un instant, nous récupérons les détails.</div>
+          </div>
+        </div>
+      );
+    }
+    if (shortLoadState.error) {
+      return (
+        <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: 'linear-gradient(180deg, #faf6ef 0%, #f0eadf 100%)', padding: 24 }}>
+          <div className="card card-pad" style={{ maxWidth: 480, textAlign: 'center', padding: 44, background: '#fff' }}>
+            <div style={{ width: 64, height: 64, margin: '0 auto 18px', borderRadius: '50%', background: 'rgba(192,57,43,0.08)', color: '#c0392b', display: 'grid', placeItems: 'center' }}>
+              <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            </div>
+            <div style={{ fontFamily: 'var(--font-serif)', fontSize: 24, fontWeight: 700, marginBottom: 10 }}>Lien introuvable</div>
+            <div style={{ fontSize: 13.5, color: 'var(--ip-muted)', lineHeight: 1.6, marginBottom: 24 }}>{shortLoadState.error}<br/>Contactez-nous pour recevoir un nouveau lien.</div>
+            <a href="mailto:idriss@ipropre.ca" className="btn btn-orange" style={{ display: 'inline-flex' }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+              idriss@ipropre.ca
+            </a>
+          </div>
+        </div>
+      );
+    }
+  }
 
   // ---------- Revoked-link screen (client mode only) ----------
   if (linkRevoked) {

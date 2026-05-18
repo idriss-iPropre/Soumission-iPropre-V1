@@ -762,18 +762,24 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
       pushToast('Ouverture du PDF…');
       openPdfWindow();
 
-      // 2) shorten the appropriate link
-      const url = buildLongUrl(undefined, { editable: linkMode === 'edit' });
-      let finalUrl = url;
-      if (url) {
-        const short = await shortenUrl(url);
-        if (short) finalUrl = short;
+      // 2) Generate the internal short link (server-stored ID). If unavailable,
+      //    fall back to is.gd/v.gd/tinyurl shortening of the long URL.
+      const editable = linkMode === 'edit';
+      let finalUrl = await createShortLink(editable);
+      if (!finalUrl) {
+        pushToast('Erreur lors de la génération du lien');
+        return;
+      }
+      const isInternalShort = finalUrl.includes('&s=') && finalUrl.includes('mode=client');
+      // If we got the long-URL fallback, try external shorteners to keep it tidy.
+      if (!isInternalShort) {
+        const external = await shortenUrl(finalUrl);
+        if (external) finalUrl = external;
       }
 
       // 3) record the sent link
-      if (finalUrl) {
-        await recordSentLink({ url, shortUrl: finalUrl !== url ? finalUrl : '' });
-      }
+      const referenceUrl = buildLongUrl(undefined, { editable }); // for tracking only
+      await recordSentLink({ url: referenceUrl, shortUrl: finalUrl !== referenceUrl ? finalUrl : '' });
 
       // 4) open the mail client with link + body
       setTimeout(() => { window.location.href = buildMailtoUrl(linkMode, finalUrl); }, 400);
@@ -804,6 +810,38 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
   // "Copier" twice doesn't create a duplicate entry; sending generates one.
   const [pendingLinkId, setPendingLinkId] = React.useState(() => (window.makeLinkId ? window.makeLinkId() : 'L' + Date.now()));
 
+  // Build the internal short link by storing the encoded state in Google Sheets
+  // and getting back a 5-char ID. Returns a ready-to-share URL like
+  // https://app.ipropre.ca/?mode=client&s=iP9k2[&e=1][&lid=L123]
+  // Falls back to the inline-encoded long URL if the backend isn't reachable.
+  const createShortLink = async (editable, linkIdOverride) => {
+    if (typeof window.encodeStateToUrl !== 'function') return null;
+    const dataJSON = window.encodeStateToUrl(state, form.clientName || form.company || '');
+    if (!dataJSON) return null;
+    const linkId = linkIdOverride || pendingLinkId;
+    const longFallback = `${location.origin}${location.pathname}?mode=client&data=${dataJSON}&lid=${linkId}${editable ? '&edit=1' : ''}`;
+
+    if (window.repo && window.repo.ShortLinks) {
+      try {
+        const result = await window.repo.ShortLinks.create({
+          soumissionId: (soumissionMeta && soumissionMeta.id) || '',
+          clientName: form.clientName || form.company || '',
+          editable: !!editable,
+          dataJSON,
+          linkId,
+        });
+        if (result && result.shortId) {
+          const editFlag = editable ? '&e=1' : '';
+          return `${location.origin}${location.pathname}?mode=client&s=${result.shortId}${editFlag}&lid=${linkId}`;
+        }
+      } catch (e) {
+        console.warn('ShortLinks.create failed, using long URL:', e);
+      }
+    }
+    return longFallback;
+  };
+
+  // Legacy long-URL builder kept for previews and email body fallback.
   const buildLongUrl = (linkIdOverride, opts = {}) => {
     if (typeof window.encodeStateToUrl !== 'function') return null;
     const encoded = window.encodeStateToUrl(state, form.clientName || form.company || '');
@@ -887,19 +925,20 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
   };
 
   const handleCopyClientLink = async () => {
-    const url = buildLongUrl(undefined, { editable: true });
-    if (!url) { pushToast('Erreur lors de l\'encodage'); return; }
     setShortening(true);
-    pushToast('Génération du lien court...');
-    const short = await shortenUrl(url);
-    setShortening(false);
-    if (short) {
-      copyToClipboard(short, `Lien client copié : ${short}`);
-      recordSentLink({ url, shortUrl: short });
-    } else {
-      copyToClipboard(url, 'Lien client copié (long format)');
-      recordSentLink({ url });
+    pushToast('Génération du lien court…');
+    let url = await createShortLink(true);
+    if (!url) { setShortening(false); pushToast('Erreur lors de la génération du lien'); return; }
+    const isInternalShort = url.includes('&s=');
+    if (!isInternalShort) {
+      // Fall back to external shortener if we couldn't use the internal one
+      const external = await shortenUrl(url);
+      if (external) url = external;
     }
+    setShortening(false);
+    copyToClipboard(url, `Lien client copié : ${url}`);
+    const reference = buildLongUrl(undefined, { editable: true });
+    recordSentLink({ url: reference, shortUrl: url !== reference ? url : '' });
   };
 
   const handleCopyLongLink = () => {
@@ -909,23 +948,24 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
     recordSentLink({ url });
   };
 
-  const handleOpenClientPreview = () => {
-    const url = buildLongUrl(undefined, { editable: true });
+  const handleOpenClientPreview = async () => {
+    const url = await createShortLink(true);
     if (!url) { pushToast('Erreur : encodeur indisponible'); return; }
     window.open(url, '_blank');
   };
 
   const handleCopyReadOnlyLink = async () => {
-    const url = buildLongUrl(undefined, { editable: false });
-    if (!url) { pushToast('Erreur lors de l\'encodage'); return; }
     setShortening(true);
-    const short = await shortenUrl(url);
-    setShortening(false);
-    if (short) {
-      copyToClipboard(short, `Lien lecture seule copié : ${short}`);
-    } else {
-      copyToClipboard(url, 'Lien lecture seule copié');
+    pushToast('Génération du lien court…');
+    let url = await createShortLink(false);
+    if (!url) { setShortening(false); pushToast('Erreur lors de la génération du lien'); return; }
+    const isInternalShort = url.includes('&s=');
+    if (!isInternalShort) {
+      const external = await shortenUrl(url);
+      if (external) url = external;
     }
+    setShortening(false);
+    copyToClipboard(url, `Lien lecture seule copié : ${url}`);
   };
 
   if (sent) {
