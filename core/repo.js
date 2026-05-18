@@ -135,5 +135,17 @@
     async list(soumissionId) { return api.call('docx.list', soumissionId ? { soumissionId } : {}); },
   };
 
-  window.repo = { Soumissions, Versions, Liens, Envois, Activite, Pdfs, Docx, uuid, now };
+  // ---------- Contacts (annuaire client, synchronisé multi-appareils) ----------
+  const Contacts = {
+    async list() { return api.call('contacts.list'); },
+    async save(contact) {
+      const payload = { ...contact };
+      if (!payload.id) payload.id = uuid();
+      payload.updatedAt = now();
+      return api.call('contacts.save', payload);
+    },
+    async delete(id) { return api.call('contacts.delete', { id }); },
+  };
+
+  window.repo = { Soumissions, Versions, Liens, Envois, Activite, Pdfs, Docx, Contacts, uuid, now };
 })();
