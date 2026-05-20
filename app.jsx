@@ -541,7 +541,7 @@ function App() {
     if (!form.email?.trim()) missing.push('Courriel');
     if (!form.phone?.trim()) missing.push('T\u00e9l\u00e9phone');
     if (!form.address?.trim()) missing.push('Adresse du service');
-    if (missing.length || !/^\d{3} \d{3} \d{4}$/.test(String(form.phone||'').trim())) {
+    if (missing.length || !/^\d{3} \d{3} \d{4}( #\d+)?$/.test(String(form.phone||'').trim())) {
       toastFn('Compl\u00e9tez d\'abord les coordonn\u00e9es client dans l\'onglet Envoi');
       setTab('envoi');
       return;
@@ -570,7 +570,7 @@ function App() {
     if (!form.email?.trim()) missing.push('Courriel');
     if (!form.phone?.trim()) missing.push('T\u00e9l\u00e9phone');
     if (!form.address?.trim()) missing.push('Adresse du service');
-    if (missing.length || !/^\d{3} \d{3} \d{4}$/.test(String(form.phone||'').trim())) {
+    if (missing.length || !/^\d{3} \d{3} \d{4}( #\d+)?$/.test(String(form.phone||'').trim())) {
       toastFn('Compl\u00e9tez d\'abord les coordonn\u00e9es client dans l\'onglet Envoi');
       setTab('envoi');
       return;

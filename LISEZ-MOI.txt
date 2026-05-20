@@ -1,18 +1,22 @@
-MISE À JOUR FAVICON - 20 mai 2026
-====================================
+AJOUT EXTENSION TÉLÉPHONE - 20 mai 2026
+========================================
 
-Ajout d'un favicon iPropre (le logo "R" avec œil rouge) qui s'affiche
-dans l'onglet du navigateur au lieu de l'icône globe générique.
+Le champ téléphone accepte maintenant un numéro de poste optionnel
+après le caractère « # ».
+
+Exemples acceptés :
+  514 555 1234         → numéro principal seul
+  514 555 1234 #123    → numéro principal + poste 123
+  514 555 1234 #4567   → numéro principal + poste 4567
+
+Saisie au clavier :
+  1. Tapez les 10 chiffres → formatés automatiquement « xxx xxx xxxx »
+  2. Tapez « # »            → ajoute « #» pour l'extension
+  3. Tapez les chiffres du poste → s'ajoutent après le #
+
+Le champ rejette les caractères non numériques sauf le « # ».
+Limite : maximum 8 chiffres pour le poste.
 
 Fichiers à déployer :
-  - index.html          (4 nouvelles lignes <link> dans <head>)
-  - assets/favicon-256.png  (favicon haute résolution + Apple Touch)
-  - assets/favicon-32.png   (favicon standard navigateur)
-  - assets/favicon-16.png   (favicon petit format)
-
-Une fois en place :
-  - L'onglet du navigateur affichera l'œil rouge du logo iPropre
-  - Si ajouté à l'écran d'accueil mobile, l'icône sera également utilisée
-
-Astuce : si le navigateur affiche encore l'ancienne icône, videz le cache
-(Cmd+Shift+R sur Mac / Ctrl+F5 sur Windows) ou ouvrez en navigation privée.
+  - envoi.jsx   (formatPhone + isValidPhone mis à jour, hint + placeholder)
+  - app.jsx     (regex de validation mis à jour aux 2 endroits)

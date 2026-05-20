@@ -107,7 +107,7 @@ function buildPrintableHtml(state, form, initialSnapshot) {
 <title>Soumission iPropre — ${esc(form.company || form.clientName || 'Client')}</title>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  @page { size: Letter; margin: 14mm 14mm 16mm; }
+  @page { size: Letter; margin: 0; }
   * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
   html, body { margin:0; padding:0; font-family:'Inter',system-ui,sans-serif; color:#111; background:#fff; font-size:12.5px; line-height:1.5; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .doc { max-width: 820px; margin: 0 auto; padding: 18px 24px; }
@@ -131,7 +131,10 @@ function buildPrintableHtml(state, form, initialSnapshot) {
   @media print {
     .no-print { display:none !important; }
     html, body, * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
-    .doc { max-width: 100% !important; padding: 0 !important; }
+    html, body { margin: 0 !important; padding: 0 !important; }
+    /* Bake margins into .doc instead of @page — works reliably regardless of
+       the user's "Marges" choice (Minimum/Default/Aucune) in the print dialog. */
+    .doc { max-width: 100% !important; margin: 0 !important; padding: 14mm 14mm 16mm 14mm !important; box-sizing: border-box; }
   }
 </style>
 </head><body>
@@ -384,14 +387,27 @@ Object.assign(window, { buildCompactDocxHtml });
 
 // ---- Phone formatting & validation ----
 // Accepts only digits, formats as "xxx xxx xxxx" while typing.
+// Optional extension after "#" (e.g. "514 555 1234 #123") — typed by user.
 function formatPhone(raw) {
-  const d = String(raw || '').replace(/\D/g, '').slice(0, 10);
-  if (d.length <= 3) return d;
-  if (d.length <= 6) return d.slice(0, 3) + ' ' + d.slice(3);
-  return d.slice(0, 3) + ' ' + d.slice(3, 6) + ' ' + d.slice(6);
+  const s = String(raw || '');
+  const hashIdx = s.indexOf('#');
+  const mainPart = hashIdx >= 0 ? s.slice(0, hashIdx) : s;
+  const extPart = hashIdx >= 0 ? s.slice(hashIdx + 1) : '';
+
+  const d = mainPart.replace(/\D/g, '').slice(0, 10);
+  let main = '';
+  if (d.length <= 3) main = d;
+  else if (d.length <= 6) main = d.slice(0, 3) + ' ' + d.slice(3);
+  else main = d.slice(0, 3) + ' ' + d.slice(3, 6) + ' ' + d.slice(6);
+
+  if (hashIdx >= 0) {
+    const ext = extPart.replace(/\D/g, '').slice(0, 8);
+    return main + ' #' + ext;
+  }
+  return main;
 }
 function isValidPhone(s) {
-  return /^\d{3} \d{3} \d{4}$/.test(String(s || '').trim());
+  return /^\d{3} \d{3} \d{4}( #\d+)?$/.test(String(s || '').trim());
 }
 
 const ENVOI_FORM_KEY_PREFIX = 'ipropre.envoi.form.v2.';
@@ -739,7 +755,7 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
       return false;
     }
     if (!isValidPhone(form.phone)) {
-      pushToast('Téléphone invalide — format : xxx xxx xxxx');
+      pushToast('Téléphone invalide — format : xxx xxx xxxx (extension optionnelle : #poste)');
       return false;
     }
     return true;
@@ -1056,10 +1072,10 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
               label="Téléphone *"
               value={form.phone}
               onChange={v => setForm(f => ({...f, phone: formatPhone(v)}))}
-              placeholder="514 000 0000"
+              placeholder="514 000 0000  ou  514 000 0000 #123"
               required
               invalid={form.phone && !isValidPhone(form.phone)}
-              hint={form.phone && !isValidPhone(form.phone) ? 'Format requis : xxx xxx xxxx' : null}
+              hint={form.phone && !isValidPhone(form.phone) ? 'Format requis : xxx xxx xxxx  (extension optionnelle : # suivi du numéro de poste)' : null}
             />
           </div>
           <div style={{ marginTop: 14 }}>
