@@ -164,5 +164,14 @@
     async resolve(shortId) { return api.call('shortlinks.resolve', { shortId }); },
   };
 
-  window.repo = { Soumissions, Versions, Liens, Envois, Activite, Pdfs, Docx, Contacts, ShortLinks, uuid, now };
+  // ---------- URL shortener (server-side proxy via Apps Script) ----------
+  // Apps Script calls is.gd / v.gd / tinyurl from the server, bypassing the
+  // CORS blocks that affect direct browser calls. Returns { shortUrl, service }.
+  const Shortener = {
+    async shorten(longUrl) {
+      return api.call('shorten.url', { url: longUrl });
+    },
+  };
+
+  window.repo = { Soumissions, Versions, Liens, Envois, Activite, Pdfs, Docx, Contacts, ShortLinks, Shortener, uuid, now };
 })();
