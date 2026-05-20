@@ -1,26 +1,18 @@
-MISES À JOUR - 20 mai 2026
-================================
+MISE À JOUR FAVICON - 20 mai 2026
+====================================
 
-Cette archive contient 3 fichiers modifiés pour deux corrections :
+Ajout d'un favicon iPropre (le logo "R" avec œil rouge) qui s'affiche
+dans l'onglet du navigateur au lieu de l'icône globe générique.
 
-1) RÉORDONNEMENT DES LIGNES DE SERVICES
-   - soumission.jsx : ajout du glisser-déposer avec poignée à gauche
-   - index.html     : styles CSS de la poignée (.row-drag-handle)
+Fichiers à déployer :
+  - index.html          (4 nouvelles lignes <link> dans <head>)
+  - assets/favicon-256.png  (favicon haute résolution + Apple Touch)
+  - assets/favicon-32.png   (favicon standard navigateur)
+  - assets/favicon-16.png   (favicon petit format)
 
-   Comment l'utiliser :
-   - Dans l'onglet « Soumission », passez la souris sur une ligne
-   - Une poignée à 6 points apparaît à gauche du nom de la prestation
-   - Glissez-la vers le haut/bas pour réordonner
-   - Une barre orange indique la position d'insertion
+Une fois en place :
+  - L'onglet du navigateur affichera l'œil rouge du logo iPropre
+  - Si ajouté à l'écran d'accueil mobile, l'icône sera également utilisée
 
-2) IMPRESSION QUI PERD LES COULEURS
-   - envoi.jsx : ajout de "print-color-adjust: exact"
-                  pour forcer les couleurs/fonds à l'impression
-
-   Note : si Chrome retire encore les couleurs, vérifier dans
-   le dialogue d'impression que l'option « Graphiques d'arrière-plan »
-   est COCHÉE. Avec cette mise à jour, c'est forcé par CSS et devrait
-   fonctionner même si la case est décochée.
-
-================================
-Fichiers à remplacer dans votre projet aux mêmes emplacements.
+Astuce : si le navigateur affiche encore l'ancienne icône, videz le cache
+(Cmd+Shift+R sur Mac / Ctrl+F5 sur Windows) ou ouvrez en navigation privée.
