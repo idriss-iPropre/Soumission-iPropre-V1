@@ -1,38 +1,79 @@
-IS.GD PRIORITAIRE - 20 mai 2026
-================================
+RACCOURCISSEUR SERVEUR (APPS SCRIPT) - 20 mai 2026
+====================================================
 
-Problème :
-  Les liens passaient par TinyURL → tinyurl.com/preview/deprecated/xxx
-  → page d'attente de 5 secondes avec pubs avant la redirection.
+VRAIE SOLUTION FINALE — sans dépendance externe :
 
-Cause :
-  L'ancien code tombait sur TinyURL dès que l'URL dépassait
-  4800 caractères. Or :
-    - La vraie limite is.gd est ~5000 caractères (pas 4800)
-    - TinyURL impose maintenant une page de prévisualisation
-      avec publicités sur tous les liens api-create.php
+Le raccourcissement d'URL passe maintenant par VOTRE Apps Script.
+is.gd refuse les requêtes navigateur (CORS bloqué), mais accepte
+les requêtes serveur. Apps Script peut appeler is.gd côté serveur
+et renvoyer le résultat au navigateur, sans problème CORS.
 
-Solution :
-  is.gd est maintenant essayé EN PREMIER, peu importe la longueur.
-  Il refusera lui-même si trop long, et on passe à v.gd. TinyURL
-  n'est utilisé qu'en TOUT DERNIER RECOURS.
+═══════════════════════════════════════════════════════════
+ÉTAPE 1 — METTRE À JOUR APPS SCRIPT (CRITIQUE)
+═══════════════════════════════════════════════════════════
 
-Résultat attendu :
-  Nouveaux liens : https://is.gd/abc123  (redirection directe,
-                                          comme vos anciens liens)
-  Fallback v.gd : https://v.gd/abc123    (redirection directe)
-  Dernier recours TinyURL : seulement si URL > 5000 caractères
+1. Ouvrir votre projet Apps Script :
+   script.google.com → "Soumissions iPropre" (ou nom équivalent)
 
-Fichier à déployer :
-  - envoi.jsx (remplacer)
+2. Coller le contenu de apps-script-corrige.gs (joint dans ce zip)
+   PAR-DESSUS le code existant — remplacer tout le fichier .gs
 
-Si vous voyez ENCORE un lien tinyurl.com après déploiement :
-  - Soit votre URL > 5000 caractères (la soumission a beaucoup
-    de lignes/contenu) — dans ce cas, raccourcir un peu les
-    libellés ou supprimer des lignes vides
-  - Soit GitHub Pages n'a pas encore republié (Cmd+Shift+R)
+3. Sauvegarder (Cmd+S)
 
-Vérification dans la console :
+4. Déployer la nouvelle version :
+   - Menu "Déployer" → "Gérer les déploiements"
+   - Cliquer l'icône crayon ✎ à droite du déploiement actif
+   - Champ "Version" : choisir "Nouvelle version"
+   - Description : "Ajout endpoint shorten.url"
+   - Cliquer "Déployer"
+   - L'URL du déploiement reste la MÊME — pas besoin de la changer
+     dans votre app
+
+5. Vérification rapide depuis l'éditeur Apps Script :
+   - Sélectionner la fonction "_diagnostic" en haut
+   - Cliquer "Exécuter"
+   - Affichage > Journaux : doit afficher la liste des onglets
+
+═══════════════════════════════════════════════════════════
+ÉTAPE 2 — METTRE À JOUR LES FICHIERS DE L'APP
+═══════════════════════════════════════════════════════════
+
+Fichiers à pousser sur GitHub :
+
+  envoi.jsx        — utilise le nouveau Shortener côté client
+  core/repo.js     — expose window.repo.Shortener
+
+Étapes Git habituelles :
+  1. Remplacer les 2 fichiers ci-dessus dans le dépôt local
+  2. git add envoi.jsx core/repo.js
+  3. git commit -m "Use server-side URL shortener (Apps Script)"
+  4. git push
+  5. Attendre 1-2 minutes que GitHub Pages republie
+  6. Cmd+Shift+R dans le navigateur pour vider le cache
+
+═══════════════════════════════════════════════════════════
+RÉSULTAT ATTENDU
+═══════════════════════════════════════════════════════════
+
+Console après clic sur "Formulaire" ou "Lecture seule" :
+
   [iPropre] createShortLink v2 (is.gd/tinyurl) — long URL length: ...
-  Si length < 5000 → vous DEVEZ avoir is.gd/...
-  Si length ≥ 5000 → la soumission est trop volumineuse
+  [iPropre] Shortener (server-side is.gd): https://is.gd/abc123
+  [iPropre] createShortLink result: https://is.gd/abc123
+
+Les liens copiés sont du format https://is.gd/xxxxxx
+(comme vos anciens liens KqB0QZ, OFqnx6, R39oKQ qui fonctionnent
+encore aujourd'hui).
+
+═══════════════════════════════════════════════════════════
+AVANTAGES DE CETTE APPROCHE
+═══════════════════════════════════════════════════════════
+
+✓ Pas de proxy CORS public — vous ne dépendez que de votre propre
+  backend Apps Script
+✓ Pas de page de prévisualisation TinyURL avec pubs
+✓ Liens courts is.gd (~22 caractères) — comme avant
+✓ Toujours rapide (juste un appel Apps Script + redirection HTTP)
+✓ Si is.gd tombe, le code essaie v.gd puis tinyurl automatiquement
+✓ Si Apps Script tombe, le code retombe sur le proxy CORS comme
+  fallback (corsproxy.io) — robustesse maximale

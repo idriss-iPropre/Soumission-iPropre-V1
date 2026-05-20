@@ -885,32 +885,47 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
   };
 
   // Try multiple shortener services in order — first one that succeeds wins.
-  // is.gd is preferred (no preview interstitial). TinyURL last resort only —
-  // they now force an ad-laden /preview/ page on api-create.php links.
+  // PRIMARY: server-side via Apps Script (UrlFetchApp.fetch on is.gd → no CORS
+  // problem because the response comes from our own backend).
+  // FALLBACK: direct calls + corsproxy.io if Apps Script is unreachable.
   const shortenUrl = async (longUrl) => {
     if (!longUrl) return null;
-    // is.gd / v.gd reject URLs > 5000 chars. Try them first regardless of
-    // length — they'll error out gracefully if the URL is too long.
-    const endpoints = [
-      `https://is.gd/create.php?format=json&url=${encodeURIComponent(longUrl)}`,
-      `https://v.gd/create.php?format=json&url=${encodeURIComponent(longUrl)}`,
+
+    // 1) Server-side via Apps Script — best path, returns clean is.gd links.
+    if (window.repo && window.repo.Shortener) {
+      try {
+        const result = await window.repo.Shortener.shorten(longUrl);
+        if (result && result.shortUrl) {
+          console.log('[iPropre] Shortener (server-side ' + (result.service || '?') + '):', result.shortUrl);
+          return result.shortUrl;
+        }
+      } catch (e) {
+        console.warn('[iPropre] Server-side shortener failed, falling back:', e);
+      }
+    }
+
+    // 2) Fallback: direct calls via public CORS proxy
+    const proxied = [
+      `https://corsproxy.io/?url=${encodeURIComponent('https://is.gd/create.php?format=json&url=' + encodeURIComponent(longUrl))}`,
+      `https://corsproxy.io/?url=${encodeURIComponent('https://v.gd/create.php?format=json&url=' + encodeURIComponent(longUrl))}`,
     ];
-    for (const api of endpoints) {
+    for (const api of proxied) {
       try {
         const resp = await fetch(api);
         const data = await resp.json();
         if (data && data.shorturl) return data.shorturl;
       } catch (e) {}
     }
-    // TinyURL fallback — only used when is.gd/v.gd refuse (URL > 5000 chars).
-    // Note: TinyURL now forces a /preview/ interstitial on api-create links,
-    // so we'd rather not use it. Last resort only.
+
+    // 3) Last resort: TinyURL direct (still works without CORS proxy, but
+    //    now forces a /preview/ interstitial with ads — only use if all else
+    //    failed).
     try {
-      const tinyEndpoint = `https://tinyurl.com/api-create.php?url=${encodeURIComponent(longUrl)}`;
-      const resp = await fetch(tinyEndpoint);
+      const resp = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(longUrl)}`);
       const text = await resp.text();
       if (text && text.startsWith('http')) return text.trim();
     } catch (e) {}
+
     return null;
   };
 

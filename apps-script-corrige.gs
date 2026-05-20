@@ -62,7 +62,56 @@ const ROUTES = {
 
   'shortlinks.create':     (ss, p) => createShortLink(ss, p),
   'shortlinks.resolve':    (ss, p) => find(ss, 'ShortLinks', 'shortId', p.shortId),
+
+  // ---------- URL shortener proxy ----------
+  // Apps Script can hit is.gd / v.gd / tinyurl server-side, bypassing the CORS
+  // restrictions that block direct browser calls. Returns the shortened URL.
+  'shorten.url':           (ss, p) => shortenUrlServerSide(p),
 };
+
+// ---------- URL shortener (server-side) ----------
+// Calls is.gd / v.gd / tinyurl from Apps Script — no CORS issues because the
+// browser receives our response (with the wildcard CORS we set), not the
+// shortener's response.
+function shortenUrlServerSide(p) {
+  if (!p.url) throw new Error('shorten.url: url manquant');
+  const longUrl = String(p.url);
+
+  // Try services in order — first one that succeeds wins.
+  const services = [
+    {
+      name: 'is.gd',
+      endpoint: 'https://is.gd/create.php?format=json&url=' + encodeURIComponent(longUrl),
+      parse: (resp) => { const j = JSON.parse(resp); return j && j.shorturl ? j.shorturl : null; },
+    },
+    {
+      name: 'v.gd',
+      endpoint: 'https://v.gd/create.php?format=json&url=' + encodeURIComponent(longUrl),
+      parse: (resp) => { const j = JSON.parse(resp); return j && j.shorturl ? j.shorturl : null; },
+    },
+    {
+      name: 'tinyurl',
+      endpoint: 'https://tinyurl.com/api-create.php?url=' + encodeURIComponent(longUrl),
+      parse: (resp) => (resp && resp.indexOf('http') === 0) ? resp.trim() : null,
+    },
+  ];
+
+  for (const svc of services) {
+    try {
+      const resp = UrlFetchApp.fetch(svc.endpoint, { muteHttpExceptions: true });
+      if (resp.getResponseCode() < 200 || resp.getResponseCode() >= 300) continue;
+      const shortUrl = svc.parse(resp.getContentText());
+      if (shortUrl) {
+        Logger.log('shorten.url: ' + svc.name + ' → ' + shortUrl);
+        return { shortUrl, service: svc.name };
+      }
+    } catch (e) {
+      Logger.log('shorten.url: ' + svc.name + ' échoué: ' + e);
+    }
+  }
+
+  throw new Error('shorten.url: aucun service de raccourcissement disponible');
+}
 
 // ---------- Short link helpers ----------
 // Generate a 5-char URL-safe random ID and ensure it's unique in the ShortLinks tab.
