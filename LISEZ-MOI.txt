@@ -1,0 +1,26 @@
+MISES À JOUR - 20 mai 2026
+================================
+
+Cette archive contient 3 fichiers modifiés pour deux corrections :
+
+1) RÉORDONNEMENT DES LIGNES DE SERVICES
+   - soumission.jsx : ajout du glisser-déposer avec poignée à gauche
+   - index.html     : styles CSS de la poignée (.row-drag-handle)
+
+   Comment l'utiliser :
+   - Dans l'onglet « Soumission », passez la souris sur une ligne
+   - Une poignée à 6 points apparaît à gauche du nom de la prestation
+   - Glissez-la vers le haut/bas pour réordonner
+   - Une barre orange indique la position d'insertion
+
+2) IMPRESSION QUI PERD LES COULEURS
+   - envoi.jsx : ajout de "print-color-adjust: exact"
+                  pour forcer les couleurs/fonds à l'impression
+
+   Note : si Chrome retire encore les couleurs, vérifier dans
+   le dialogue d'impression que l'option « Graphiques d'arrière-plan »
+   est COCHÉE. Avec cette mise à jour, c'est forcé par CSS et devrait
+   fonctionner même si la case est décochée.
+
+================================
+Fichiers à remplacer dans votre projet aux mêmes emplacements.

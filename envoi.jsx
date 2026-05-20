@@ -108,8 +108,8 @@ function buildPrintableHtml(state, form, initialSnapshot) {
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   @page { size: Letter; margin: 14mm 14mm 16mm; }
-  * { box-sizing: border-box; }
-  html, body { margin:0; padding:0; font-family:'Inter',system-ui,sans-serif; color:#111; background:#fff; font-size:12.5px; line-height:1.5; }
+  * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
+  html, body { margin:0; padding:0; font-family:'Inter',system-ui,sans-serif; color:#111; background:#fff; font-size:12.5px; line-height:1.5; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .doc { max-width: 820px; margin: 0 auto; padding: 18px 24px; }
   .hdr { display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #F4A51C;padding-bottom:16px;margin-bottom:22px; }
   .hdr-left { display:flex;align-items:center;gap:14px; }
@@ -128,7 +128,11 @@ function buildPrintableHtml(state, form, initialSnapshot) {
   .footer { margin-top:28px;padding-top:14px;border-top:1px solid #eee;font-size:10.5px;color:#999;text-align:center;line-height:1.6 }
   .no-print { padding:14px;background:#F4A51C;color:#1a1208;text-align:center;font-weight:600;position:sticky;top:0;z-index:100;display:flex;justify-content:center;gap:12px;align-items:center; }
   .no-print button { background:#111;color:#fff;border:none;padding:9px 18px;border-radius:6px;font-weight:600;cursor:pointer;font-family:inherit;font-size:13px; }
-  @media print { .no-print { display:none !important; } }
+  @media print {
+    .no-print { display:none !important; }
+    html, body, * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
+    .doc { max-width: 100% !important; padding: 0 !important; }
+  }
 </style>
 </head><body>
 <div class="no-print">

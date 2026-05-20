@@ -150,6 +150,10 @@
   .stable thead th { text-align: left; font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--ip-muted); padding: 12px 14px; border-bottom: 1px solid var(--ip-line); }
   .stable tbody tr { transition: background 0.12s; }
   .stable tbody tr:hover { background: #fafafa; }
+  .stable tbody tr:hover .row-drag-handle,
+  .stable tbody tr .row-drag-handle:focus-visible { opacity: 1 !important; }
+  .row-drag-handle:hover { background: var(--ip-line-2); color: var(--ip-ink) !important; }
+  .row-drag-handle:active { cursor: grabbing !important; }
   .stable tbody td { padding: 12px 14px; border-bottom: 1px solid var(--ip-line-2); vertical-align: middle; }
   .stable tbody tr:last-child td { border-bottom: none; }
 

@@ -160,6 +160,9 @@ function SoumissionPage({ state, setState, pushToast, history, undo, future, red
   const gridTpl = `44% repeat(${Math.max(visibleCount, 1)}, 1fr)`;
   const [openMenu, setOpenMenu] = React.useState(null); // plan index of open dot-menu
   const [collapsed, setCollapsed] = React.useState({});
+  // Row drag-and-drop reordering state
+  const [draggedRow, setDraggedRow] = React.useState(null); // { secIdx, rowIdx }
+  const [dragOverRow, setDragOverRow] = React.useState(null); // { secIdx, rowIdx, position: 'before'|'after' }
 
   // Close menu when clicking outside
   React.useEffect(() => {
@@ -246,6 +249,24 @@ function SoumissionPage({ state, setState, pushToast, history, undo, future, red
       return { ...s, sections: secs };
     });
     pushToast('Ligne supprimée');
+  };
+
+  const moveRow = (secIdx, fromIdx, toIdx) => {
+    // toIdx is the desired final position in the resulting array.
+    // Adjust if we're moving downward (after removal, indices shift).
+    if (fromIdx === toIdx || fromIdx === toIdx - 1) return;
+    setState((s) => {
+      const secs = s.sections.map((sec, si) => {
+        if (si !== secIdx) return sec;
+        const rows = [...sec.rows];
+        const [moved] = rows.splice(fromIdx, 1);
+        const insertAt = toIdx > fromIdx ? toIdx - 1 : toIdx;
+        rows.splice(insertAt, 0, moved);
+        return { ...sec, rows };
+      });
+      return { ...s, sections: secs };
+    });
+    pushToast('Ordre modifié');
   };
 
   const addSection = () => {
@@ -587,9 +608,63 @@ function SoumissionPage({ state, setState, pushToast, history, undo, future, red
               </tr>
             </thead>
             <tbody>
-              {sec.rows.map((row, rowIdx) =>
-                <tr key={rowIdx} style={row.clientAdded ? { background: 'rgba(244,165,28,0.05)' } : undefined}>
+              {sec.rows.map((row, rowIdx) => {
+                const isDragging = draggedRow && draggedRow.secIdx === secIdx && draggedRow.rowIdx === rowIdx;
+                const isDragOverHere = dragOverRow && dragOverRow.secIdx === secIdx && dragOverRow.rowIdx === rowIdx;
+                const dropTopBorder = isDragOverHere && dragOverRow.position === 'before';
+                const dropBottomBorder = isDragOverHere && dragOverRow.position === 'after';
+                return (
+                <tr
+                  key={rowIdx}
+                  onDragOver={!ro ? (e) => {
+                    if (!draggedRow || draggedRow.secIdx !== secIdx) return;
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const midY = rect.top + rect.height / 2;
+                    const position = e.clientY < midY ? 'before' : 'after';
+                    if (!dragOverRow || dragOverRow.secIdx !== secIdx || dragOverRow.rowIdx !== rowIdx || dragOverRow.position !== position) {
+                      setDragOverRow({ secIdx, rowIdx, position });
+                    }
+                  } : undefined}
+                  onDrop={!ro ? (e) => {
+                    if (!draggedRow || draggedRow.secIdx !== secIdx) return;
+                    e.preventDefault();
+                    const position = dragOverRow && dragOverRow.secIdx === secIdx && dragOverRow.rowIdx === rowIdx ? dragOverRow.position : 'after';
+                    const targetIdx = position === 'after' ? rowIdx + 1 : rowIdx;
+                    moveRow(secIdx, draggedRow.rowIdx, targetIdx);
+                    setDraggedRow(null); setDragOverRow(null);
+                  } : undefined}
+                  style={{
+                    ...(row.clientAdded ? { background: 'rgba(244,165,28,0.05)' } : null),
+                    opacity: isDragging ? 0.4 : 1,
+                    boxShadow: dropTopBorder ? 'inset 0 2px 0 0 var(--ip-orange)' : dropBottomBorder ? 'inset 0 -2px 0 0 var(--ip-orange)' : undefined,
+                  }}>
                   <td style={{ paddingRight: 18, position: 'relative' }}>
+                    {!ro && (
+                      <span
+                        className="row-drag-handle"
+                        draggable
+                        onDragStart={(e) => {
+                          setDraggedRow({ secIdx, rowIdx });
+                          e.dataTransfer.effectAllowed = 'move';
+                          try { e.dataTransfer.setData('text/plain', `row-${secIdx}-${rowIdx}`); } catch (_) {}
+                        }}
+                        onDragEnd={() => { setDraggedRow(null); setDragOverRow(null); }}
+                        title="Glisser pour réordonner"
+                        style={{
+                          position: 'absolute', left: -2, top: '50%', transform: 'translateY(-50%)',
+                          width: 18, height: 26, display: 'grid', placeItems: 'center',
+                          cursor: 'grab', color: 'var(--ip-muted)', opacity: 0,
+                          transition: 'opacity 0.12s', userSelect: 'none', borderRadius: 4,
+                        }}>
+                        <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" aria-hidden="true">
+                          <circle cx="2.5" cy="3" r="1.1"/><circle cx="7.5" cy="3" r="1.1"/>
+                          <circle cx="2.5" cy="7" r="1.1"/><circle cx="7.5" cy="7" r="1.1"/>
+                          <circle cx="2.5" cy="11" r="1.1"/><circle cx="7.5" cy="11" r="1.1"/>
+                        </svg>
+                      </span>
+                    )}
                     {roCells && !row.clientAdded ?
                     <div style={{ padding: '6px 10px 6px 6px', fontWeight: 500, lineHeight: 1.4, color: row.label ? 'var(--ip-ink)' : 'var(--ip-muted)' }}>
                         {row.label || <em style={{ color: '#bbb' }}>(sans nom)</em>}
@@ -644,7 +719,7 @@ function SoumissionPage({ state, setState, pushToast, history, undo, future, red
                     </td>
                   }
                 </tr>
-                )}
+                );})}
               <tr className="add-line-row">
                 <td colSpan={visibleCount + (ro ? 1 : 2)} className="add-line" style={{ padding: '10px 14px', borderBottom: 'none' }}>
                   <button className="btn btn-ghost" onClick={() => addRow(secIdx)} style={{ padding: '7px 12px', fontSize: 12.5 }}>
