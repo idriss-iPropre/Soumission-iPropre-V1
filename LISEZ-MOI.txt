@@ -1,72 +1,38 @@
-CORRECTION LIENS + CLIPBOARD - 20 mai 2026
-============================================
+IS.GD PRIORITAIRE - 20 mai 2026
+================================
 
-DEUX PROBLÈMES CORRIGÉS :
-
-────────────────────────────────────────────
-PROBLÈME 1 — Liens ?mode=client&s=rLkWW (page blanche)
-────────────────────────────────────────────
+Problème :
+  Les liens passaient par TinyURL → tinyurl.com/preview/deprecated/xxx
+  → page d'attente de 5 secondes avec pubs avant la redirection.
 
 Cause :
-  Les liens au format ?s=rLkWW sont générés par l'ancien système
-  qui appelle Google Sheets pour résoudre l'ID. Ce système ne
-  fonctionne plus de manière fiable.
+  L'ancien code tombait sur TinyURL dès que l'URL dépassait
+  4800 caractères. Or :
+    - La vraie limite is.gd est ~5000 caractères (pas 4800)
+    - TinyURL impose maintenant une page de prévisualisation
+      avec publicités sur tous les liens api-create.php
 
 Solution :
-  Le fichier envoi.jsx joint utilise UNIQUEMENT is.gd / v.gd /
-  tinyurl pour raccourcir les URLs. Les NOUVEAUX liens seront du
-  format :
+  is.gd est maintenant essayé EN PREMIER, peu importe la longueur.
+  Il refusera lui-même si trop long, et on passe à v.gd. TinyURL
+  n'est utilisé qu'en TOUT DERNIER RECOURS.
 
-      https://is.gd/abc123          (idéal, ~22 caractères)
-      https://v.gd/abc123           (secours)
-      https://tinyurl.com/AaBbCcDd  (URLs longues > 4800 car.)
+Résultat attendu :
+  Nouveaux liens : https://is.gd/abc123  (redirection directe,
+                                          comme vos anciens liens)
+  Fallback v.gd : https://v.gd/abc123    (redirection directe)
+  Dernier recours TinyURL : seulement si URL > 5000 caractères
 
-  Si vous voyez encore "?mode=client&s=XXX" après déploiement,
-  c'est que le fichier n'est PAS encore en ligne (cache GitHub
-  Pages ou push manquant).
+Fichier à déployer :
+  - envoi.jsx (remplacer)
 
-────────────────────────────────────────────
-PROBLÈME 2 — Il faut cliquer plusieurs fois pour copier
-────────────────────────────────────────────
+Si vous voyez ENCORE un lien tinyurl.com après déploiement :
+  - Soit votre URL > 5000 caractères (la soumission a beaucoup
+    de lignes/contenu) — dans ce cas, raccourcir un peu les
+    libellés ou supprimer des lignes vides
+  - Soit GitHub Pages n'a pas encore republié (Cmd+Shift+R)
 
-Cause :
-  Le navigateur bloque navigator.clipboard.writeText() après un
-  "await" parce que le geste utilisateur est perdu. Du coup :
-    1er clic → silencieux ou prompt non visible
-    2e clic → idem
-    3e clic → parfois ça marche
-
-Solution :
-  Méthode de copie synchrone (textarea + execCommand) qui
-  fonctionne TOUJOURS, même après une attente asynchrone.
-
-────────────────────────────────────────────
-COMMENT VÉRIFIER QUE LE FICHIER EST BIEN DÉPLOYÉ
-────────────────────────────────────────────
-
-1. Ouvrez l'app dans Chrome
-2. Cmd+Option+J (Mac) ou F12 (Windows) → onglet "Console"
-3. Cliquez sur "Formulaire" ou "Lecture seule"
-4. Vous devez voir dans la console :
-
-   [iPropre] createShortLink v2 (is.gd/tinyurl) — long URL length: ...
-   [iPropre] createShortLink result: https://is.gd/...
-
-   Si vous voyez l'ancien message ou rien → le fichier n'est PAS
-   déployé. Forcer le rafraîchissement avec Cmd+Shift+R.
-
-────────────────────────────────────────────
-DÉPLOIEMENT
-────────────────────────────────────────────
-
-Fichier à pousser sur GitHub :
-  - envoi.jsx  (remplacer celui dans le dépôt)
-
-Étapes :
-  1. Remplacer envoi.jsx dans votre dossier de travail local
-  2. git add envoi.jsx && git commit -m "Fix liens + clipboard"
-  3. git push
-  4. Attendre 1-2 minutes que GitHub Pages republie
-  5. Cmd+Shift+R sur l'app pour vider le cache
-  6. Tester : ouvrir DevTools → Console → cliquer "Formulaire"
-     → vérifier le message console "[iPropre] createShortLink v2"
+Vérification dans la console :
+  [iPropre] createShortLink v2 (is.gd/tinyurl) — long URL length: ...
+  Si length < 5000 → vous DEVEZ avoir is.gd/...
+  Si length ≥ 5000 → la soumission est trop volumineuse

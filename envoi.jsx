@@ -885,25 +885,28 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
   };
 
   // Try multiple shortener services in order — first one that succeeds wins.
-  // All three are CORS-enabled GET endpoints.
+  // is.gd is preferred (no preview interstitial). TinyURL last resort only —
+  // they now force an ad-laden /preview/ page on api-create.php links.
   const shortenUrl = async (longUrl) => {
     if (!longUrl) return null;
-    // is.gd / v.gd cap at ~5000 chars; tinyurl can take longer URLs.
-    const endpoints = [];
-    if (longUrl.length <= 4800) {
-      endpoints.push(`https://is.gd/create.php?format=json&url=${encodeURIComponent(longUrl)}`);
-      endpoints.push(`https://v.gd/create.php?format=json&url=${encodeURIComponent(longUrl)}`);
-    }
-    // TinyURL fallback — accepts longer URLs, returns plain-text short URL.
-    const tinyEndpoint = `https://tinyurl.com/api-create.php?url=${encodeURIComponent(longUrl)}`;
+    // is.gd / v.gd reject URLs > 5000 chars. Try them first regardless of
+    // length — they'll error out gracefully if the URL is too long.
+    const endpoints = [
+      `https://is.gd/create.php?format=json&url=${encodeURIComponent(longUrl)}`,
+      `https://v.gd/create.php?format=json&url=${encodeURIComponent(longUrl)}`,
+    ];
     for (const api of endpoints) {
       try {
         const resp = await fetch(api);
         const data = await resp.json();
-        if (data.shorturl) return data.shorturl;
+        if (data && data.shorturl) return data.shorturl;
       } catch (e) {}
     }
+    // TinyURL fallback — only used when is.gd/v.gd refuse (URL > 5000 chars).
+    // Note: TinyURL now forces a /preview/ interstitial on api-create links,
+    // so we'd rather not use it. Last resort only.
     try {
+      const tinyEndpoint = `https://tinyurl.com/api-create.php?url=${encodeURIComponent(longUrl)}`;
       const resp = await fetch(tinyEndpoint);
       const text = await resp.text();
       if (text && text.startsWith('http')) return text.trim();
