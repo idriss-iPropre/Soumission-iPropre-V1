@@ -1,79 +1,95 @@
-RACCOURCISSEUR SERVEUR (APPS SCRIPT) - 20 mai 2026
-====================================================
+CORRECTION FINALE — RACCOURCISSEUR + CLIPBOARD - 20 mai 2026
+==============================================================
 
-VRAIE SOLUTION FINALE — sans dépendance externe :
-
-Le raccourcissement d'URL passe maintenant par VOTRE Apps Script.
-is.gd refuse les requêtes navigateur (CORS bloqué), mais accepte
-les requêtes serveur. Apps Script peut appeler is.gd côté serveur
-et renvoyer le résultat au navigateur, sans problème CORS.
+DEUX CORRECTIONS dans cette mise à jour :
 
 ═══════════════════════════════════════════════════════════
-ÉTAPE 1 — METTRE À JOUR APPS SCRIPT (CRITIQUE)
+1. RACCOURCISSEUR : DA.GD AJOUTÉ EN PREMIER
 ═══════════════════════════════════════════════════════════
 
-1. Ouvrir votre projet Apps Script :
-   script.google.com → "Soumissions iPropre" (ou nom équivalent)
+Diagnostic depuis votre console :
+  [iPropre] Shortener (server-side tinyurl): https://tinyurl.com/...
 
-2. Coller le contenu de apps-script-corrige.gs (joint dans ce zip)
-   PAR-DESSUS le code existant — remplacer tout le fichier .gs
+Apps Script a réussi à appeler tinyurl mais is.gd et v.gd ont
+échoué. Cause probable : is.gd rate-limite les IP Google
+(Apps Script tourne sur des IPs partagées).
 
-3. Sauvegarder (Cmd+S)
+Solution : ajout de da.gd EN PREMIER dans la liste des services.
+da.gd est un raccourcisseur fiable, sans page de prévisualisation
+ni publicités, et n'a pas de problème avec les IP Google.
 
-4. Déployer la nouvelle version :
-   - Menu "Déployer" → "Gérer les déploiements"
-   - Cliquer l'icône crayon ✎ à droite du déploiement actif
-   - Champ "Version" : choisir "Nouvelle version"
-   - Description : "Ajout endpoint shorten.url"
-   - Cliquer "Déployer"
-   - L'URL du déploiement reste la MÊME — pas besoin de la changer
-     dans votre app
+Ordre essayé par Apps Script :
+  1. da.gd      → https://da.gd/abc        (idéal — pas d'ad)
+  2. is.gd      → https://is.gd/abc        (si da.gd indisponible)
+  3. v.gd       → https://v.gd/abc
+  4. spoo.me    → https://spoo.me/abc
+  5. tinyurl    → dernier recours (page preview avec pubs)
 
-5. Vérification rapide depuis l'éditeur Apps Script :
-   - Sélectionner la fonction "_diagnostic" en haut
-   - Cliquer "Exécuter"
-   - Affichage > Journaux : doit afficher la liste des onglets
-
-═══════════════════════════════════════════════════════════
-ÉTAPE 2 — METTRE À JOUR LES FICHIERS DE L'APP
-═══════════════════════════════════════════════════════════
-
-Fichiers à pousser sur GitHub :
-
-  envoi.jsx        — utilise le nouveau Shortener côté client
-  core/repo.js     — expose window.repo.Shortener
-
-Étapes Git habituelles :
-  1. Remplacer les 2 fichiers ci-dessus dans le dépôt local
-  2. git add envoi.jsx core/repo.js
-  3. git commit -m "Use server-side URL shortener (Apps Script)"
-  4. git push
-  5. Attendre 1-2 minutes que GitHub Pages republie
-  6. Cmd+Shift+R dans le navigateur pour vider le cache
+Logs Apps Script améliorés : chaque échec est enregistré avec
+sa raison (HTTP 4xx, réponse invalide, etc.). Pour les voir :
+  Apps Script → Exécutions → cliquer une exécution → Journaux.
 
 ═══════════════════════════════════════════════════════════
-RÉSULTAT ATTENDU
+2. CLIPBOARD : COPIE QUI MARCHE DU PREMIER COUP
 ═══════════════════════════════════════════════════════════
 
-Console après clic sur "Formulaire" ou "Lecture seule" :
+Problème :
+  Après un `await`, le navigateur perd le "user gesture token",
+  donc `document.execCommand('copy')` ET `navigator.clipboard`
+  échouent. Le code tombait sur `window.prompt()` qui était
+  supprimé parce que le PDF s'ouvrait dans un autre onglet.
 
-  [iPropre] createShortLink v2 (is.gd/tinyurl) — long URL length: ...
-  [iPropre] Shortener (server-side is.gd): https://is.gd/abc123
-  [iPropre] createShortLink result: https://is.gd/abc123
+Solution moderne :
+  Utilisation de `navigator.clipboard.write([new ClipboardItem({
+    'text/plain': promise
+  })])` — l'appel CLIPBOARD est synchrone (préserve le geste),
+  et la promesse est résolue PLUS TARD avec le lien généré.
 
-Les liens copiés sont du format https://is.gd/xxxxxx
-(comme vos anciens liens KqB0QZ, OFqnx6, R39oKQ qui fonctionnent
-encore aujourd'hui).
+  Chrome / Safari / Edge supportent ce pattern. C'est la méthode
+  recommandée officielle pour copier un résultat asynchrone.
+
+Résultat :
+  Un seul clic suffit pour copier "Formulaire" ou "Lecture seule".
+  Le toast "Lien copié : https://..." s'affiche dès que la
+  génération aboutit.
 
 ═══════════════════════════════════════════════════════════
-AVANTAGES DE CETTE APPROCHE
+DÉPLOIEMENT
 ═══════════════════════════════════════════════════════════
 
-✓ Pas de proxy CORS public — vous ne dépendez que de votre propre
-  backend Apps Script
-✓ Pas de page de prévisualisation TinyURL avec pubs
-✓ Liens courts is.gd (~22 caractères) — comme avant
-✓ Toujours rapide (juste un appel Apps Script + redirection HTTP)
-✓ Si is.gd tombe, le code essaie v.gd puis tinyurl automatiquement
-✓ Si Apps Script tombe, le code retombe sur le proxy CORS comme
-  fallback (corsproxy.io) — robustesse maximale
+A. METTRE À JOUR APPS SCRIPT (obligatoire) :
+   1. script.google.com → ouvrir votre projet Soumissions iPropre
+   2. Coller apps-script-corrige.gs PAR-DESSUS le code existant
+   3. Cmd+S pour sauvegarder
+   4. Menu Déployer → Gérer les déploiements → crayon ✎
+      → Version : "Nouvelle version" → Déployer
+   5. L'URL reste la même — pas de modification côté app
+
+B. POUSSER envoi.jsx SUR GITHUB :
+   1. Remplacer envoi.jsx dans votre dépôt local
+   2. git add envoi.jsx
+   3. git commit -m "Fix shortener + clipboard"
+   4. git push
+   5. Attendre 1-2 min que GitHub Pages republie
+   6. Cmd+Shift+R dans le navigateur
+
+═══════════════════════════════════════════════════════════
+COMMENT VÉRIFIER QUE TOUT FONCTIONNE
+═══════════════════════════════════════════════════════════
+
+1. Ouvrir DevTools (F12) → Console
+2. Aller dans l'onglet Envoi
+3. Cliquer "Formulaire" ou "Lecture seule"
+4. Vous DEVEZ voir dans la console :
+
+   [iPropre] createShortLink v2 (is.gd/tinyurl) — long URL length: 1984
+   [iPropre] Shortener (server-side da.gd): https://da.gd/xxxxx
+   [iPropre] createShortLink result: https://da.gd/xxxxx
+
+5. Le lien est copié DÈS LE PREMIER CLIC
+6. Toast affiché : "Lien copié : https://da.gd/xxxxx"
+
+Si vous voyez encore "tinyurl" → Apps Script n'est PAS redéployé.
+Si vous voyez "is.gd" → encore mieux, ça veut dire is.gd a
+accepté la requête cette fois-ci.
+

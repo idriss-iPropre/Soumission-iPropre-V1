@@ -70,24 +70,38 @@ const ROUTES = {
 };
 
 // ---------- URL shortener (server-side) ----------
-// Calls is.gd / v.gd / tinyurl from Apps Script — no CORS issues because the
-// browser receives our response (with the wildcard CORS we set), not the
+// Calls multiple shortener services from Apps Script — no CORS issues because
+// the browser receives our response (with the wildcard CORS we set), not the
 // shortener's response.
 function shortenUrlServerSide(p) {
   if (!p.url) throw new Error('shorten.url: url manquant');
   const longUrl = String(p.url);
 
   // Try services in order — first one that succeeds wins.
+  // da.gd is reliable and has no preview/ads (much better than tinyurl).
+  // is.gd / v.gd often rate-limit Google IPs, so they're not first anymore.
   const services = [
+    {
+      name: 'da.gd',
+      endpoint: 'https://da.gd/s?url=' + encodeURIComponent(longUrl),
+      parse: (resp) => (resp && resp.indexOf('http') === 0) ? resp.trim() : null,
+    },
     {
       name: 'is.gd',
       endpoint: 'https://is.gd/create.php?format=json&url=' + encodeURIComponent(longUrl),
-      parse: (resp) => { const j = JSON.parse(resp); return j && j.shorturl ? j.shorturl : null; },
+      parse: (resp) => { try { const j = JSON.parse(resp); return j && j.shorturl ? j.shorturl : null; } catch (e) { return null; } },
     },
     {
       name: 'v.gd',
       endpoint: 'https://v.gd/create.php?format=json&url=' + encodeURIComponent(longUrl),
-      parse: (resp) => { const j = JSON.parse(resp); return j && j.shorturl ? j.shorturl : null; },
+      parse: (resp) => { try { const j = JSON.parse(resp); return j && j.shorturl ? j.shorturl : null; } catch (e) { return null; } },
+    },
+    {
+      name: 'spoo.me',
+      endpoint: 'https://spoo.me/',
+      method: 'post',
+      payload: { url: longUrl },
+      parse: (resp) => { try { const j = JSON.parse(resp); return j && j.short_url ? j.short_url : null; } catch (e) { return null; } },
     },
     {
       name: 'tinyurl',
@@ -96,21 +110,34 @@ function shortenUrlServerSide(p) {
     },
   ];
 
+  const errors = [];
   for (const svc of services) {
     try {
-      const resp = UrlFetchApp.fetch(svc.endpoint, { muteHttpExceptions: true });
-      if (resp.getResponseCode() < 200 || resp.getResponseCode() >= 300) continue;
-      const shortUrl = svc.parse(resp.getContentText());
+      const opts = { muteHttpExceptions: true, followRedirects: true };
+      if (svc.method === 'post') {
+        opts.method = 'post';
+        opts.payload = svc.payload;
+        opts.headers = { 'Accept': 'application/json' };
+      }
+      const resp = UrlFetchApp.fetch(svc.endpoint, opts);
+      const code = resp.getResponseCode();
+      const text = resp.getContentText();
+      if (code < 200 || code >= 300) {
+        errors.push(svc.name + ': HTTP ' + code);
+        continue;
+      }
+      const shortUrl = svc.parse(text);
       if (shortUrl) {
         Logger.log('shorten.url: ' + svc.name + ' → ' + shortUrl);
         return { shortUrl, service: svc.name };
       }
+      errors.push(svc.name + ': réponse invalide (' + text.substring(0, 80) + ')');
     } catch (e) {
-      Logger.log('shorten.url: ' + svc.name + ' échoué: ' + e);
+      errors.push(svc.name + ': ' + e.toString().substring(0, 80));
     }
   }
 
-  throw new Error('shorten.url: aucun service de raccourcissement disponible');
+  throw new Error('shorten.url: tous les services ont échoué — ' + errors.join(' | '));
 }
 
 // ---------- Short link helpers ----------

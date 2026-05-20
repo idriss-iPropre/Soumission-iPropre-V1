@@ -971,15 +971,57 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
     }
   };
 
+  // ----- Async-friendly copy ------------------------------------------------
+  // Pattern: the user clicks → we IMMEDIATELY call navigator.clipboard.write()
+  // with a ClipboardItem containing a Promise. The browser preserves the
+  // user-gesture token across the async work because the call itself is
+  // synchronous. Falls back to traditional copy if the API is unavailable.
+  //
+  // generator: async function that returns the text to copy
+  // successMsg(text): function returning a toast string given the text
+  const copyAsyncResult = async (generator, successMsgFn) => {
+    // Modern path: ClipboardItem with Promise — works even after await.
+    if (typeof ClipboardItem !== 'undefined' && navigator.clipboard && navigator.clipboard.write) {
+      try {
+        const blobPromise = (async () => {
+          const text = await generator();
+          return new Blob([text || ''], { type: 'text/plain' });
+        })();
+        // Kick off the clipboard write right away (still in user-gesture scope)
+        await navigator.clipboard.write([new ClipboardItem({ 'text/plain': blobPromise })]);
+        // We need the text again for the toast — wait on the same promise.
+        const blob = await blobPromise;
+        const text = await blob.text();
+        if (text) pushToast(successMsgFn(text));
+        return text;
+      } catch (e) {
+        console.warn('[iPropre] ClipboardItem write failed, falling back:', e);
+        // fall through to legacy path below
+      }
+    }
+    // Legacy: generate first, then try sync copy.
+    const text = await generator();
+    if (!text) return null;
+    copyToClipboard(text, successMsgFn(text));
+    return text;
+  };
+
   const handleCopyClientLink = async () => {
     setShortening(true);
     pushToast('Génération du lien court…');
-    const url = await createShortLink(true);
+    let finalUrl = null;
+    await copyAsyncResult(
+      async () => {
+        const url = await createShortLink(true);
+        finalUrl = url;
+        return url;
+      },
+      (url) => `Lien client copié : ${url}`,
+    );
     setShortening(false);
-    if (!url) { pushToast('Erreur lors de la génération du lien'); return; }
-    copyToClipboard(url, `Lien client copié : ${url}`);
+    if (!finalUrl) { pushToast('Erreur lors de la génération du lien'); return; }
     const reference = buildLongUrl(undefined, { editable: true });
-    recordSentLink({ url: reference, shortUrl: url !== reference ? url : '' });
+    recordSentLink({ url: reference, shortUrl: finalUrl !== reference ? finalUrl : '' });
   };
 
   const handleCopyLongLink = () => {
@@ -998,10 +1040,17 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
   const handleCopyReadOnlyLink = async () => {
     setShortening(true);
     pushToast('Génération du lien court…');
-    const url = await createShortLink(false);
+    let finalUrl = null;
+    await copyAsyncResult(
+      async () => {
+        const url = await createShortLink(false);
+        finalUrl = url;
+        return url;
+      },
+      (url) => `Lien lecture seule copié : ${url}`,
+    );
     setShortening(false);
-    if (!url) { pushToast('Erreur lors de la génération du lien'); return; }
-    copyToClipboard(url, `Lien lecture seule copié : ${url}`);
+    if (!finalUrl) { pushToast('Erreur lors de la génération du lien'); }
   };
 
   if (sent) {
