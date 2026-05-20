@@ -1,22 +1,28 @@
-AJOUT EXTENSION TÉLÉPHONE - 20 mai 2026
-========================================
+RETOUR AUX LIENS IS.GD - 20 mai 2026
+=====================================
 
-Le champ téléphone accepte maintenant un numéro de poste optionnel
-après le caractère « # ».
+Problème :
+  Les nouveaux liens courts générés via le backend Google Sheets
+  (format ?mode=client&s=GMpcB&...) ne fonctionnaient plus — la page
+  restait blanche car la résolution côté serveur échouait.
 
-Exemples acceptés :
-  514 555 1234         → numéro principal seul
-  514 555 1234 #123    → numéro principal + poste 123
-  514 555 1234 #4567   → numéro principal + poste 4567
+Solution :
+  Retour à l'ancien système éprouvé : on construit l'URL complète avec
+  les données encodées DANS l'URL (?mode=client&data=...) puis on la
+  raccourcit via is.gd / v.gd / tinyurl. Ces services se contentent
+  d'une redirection HTTP — pas de dépendance backend.
 
-Saisie au clavier :
-  1. Tapez les 10 chiffres → formatés automatiquement « xxx xxx xxxx »
-  2. Tapez « # »            → ajoute « #» pour l'extension
-  3. Tapez les chiffres du poste → s'ajoutent après le #
+Avantages :
+  - Les liens ouvrent instantanément (juste une redirection)
+  - Pas de dépendance Apps Script / Google Sheets
+  - Les liens restent valides à vie tant que le service de
+    raccourcissement existe
+  - Compatible avec vos anciens liens (https://is.gd/KqB0QZ etc.)
 
-Le champ rejette les caractères non numériques sauf le « # ».
-Limite : maximum 8 chiffres pour le poste.
+Fichier à déployer :
+  - envoi.jsx (remplacer le fichier existant)
 
-Fichiers à déployer :
-  - envoi.jsx   (formatPhone + isValidPhone mis à jour, hint + placeholder)
-  - app.jsx     (regex de validation mis à jour aux 2 endroits)
+Note : les liens déjà générés avec ?mode=client&s=... ne fonctionneront
+toujours pas — il faut les régénérer. Les NOUVEAUX liens seront du
+format raccourci is.gd (ex : https://is.gd/AbCdEf) qui marchent comme
+au premier jour.

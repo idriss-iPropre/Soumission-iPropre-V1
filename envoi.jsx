@@ -543,6 +543,8 @@ function contactKey(c) {
   return (c.email || '').toLowerCase().trim()
     || (((c.clientName||'') + '|' + (c.company||'')).toLowerCase().trim());
 }
+// Returns: false on failure, { updated: true } if an existing contact was
+// merged/updated, { created: true } if a new contact was added.
 function saveStandaloneContact(c) {
   const list = loadStandaloneContacts();
   const dedupKey = contactKey(c);
@@ -565,7 +567,7 @@ function saveStandaloneContact(c) {
   if (window.repo && window.repo.Contacts) {
     window.repo.Contacts.save({ ...entry, updatedAt: new Date(entry.updatedAt).toISOString() }).catch(() => {});
   }
-  return true;
+  return idx >= 0 ? { updated: true } : { created: true };
 }
 // Pull contacts from Google Sheets, merge with local — newer updatedAt wins per id.
 async function syncContactsFromCloud() {
@@ -786,7 +788,7 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
       const editable = linkMode === 'edit';
       const finalUrl = await createShortLink(editable);
       if (!finalUrl) {
-        pushToast('Erreur : Apps Script non joignable — lien non généré');
+        pushToast('Erreur lors de la génération du lien');
         return;
       }
 
@@ -823,35 +825,16 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
   // "Copier" twice doesn't create a duplicate entry; sending generates one.
   const [pendingLinkId, setPendingLinkId] = React.useState(() => (window.makeLinkId ? window.makeLinkId() : 'L' + Date.now()));
 
-  // Build the internal short link by storing the encoded state in Google Sheets
-  // and getting back a 5-char ID. Returns a ready-to-share URL like
-  // https://app.ipropre.ca/?mode=client&s=iP9k2[&e=1][&lid=L123]
-  // Falls back to the inline-encoded long URL if the backend isn't reachable.
+  // Build a client URL: encode the soumission state directly in the URL
+  // (`?mode=client&data=…`), then shorten via is.gd/v.gd/tinyurl. No backend
+  // needed — the URL itself carries everything, so it stays valid forever and
+  // resolves instantly (just an HTTP redirect, like the legacy is.gd links).
+  // Returns the short URL when shortening succeeds, or the long URL otherwise.
   const createShortLink = async (editable, linkIdOverride) => {
-    if (typeof window.encodeStateToUrl !== 'function') return null;
-    const dataJSON = window.encodeStateToUrl(state, form.clientName || form.company || '');
-    if (!dataJSON) return null;
-    const linkId = linkIdOverride || pendingLinkId;
-    const longFallback = `${location.origin}${location.pathname}?mode=client&data=${dataJSON}&lid=${linkId}${editable ? '&edit=1' : ''}`;
-
-    if (window.repo && window.repo.ShortLinks) {
-      try {
-        const result = await window.repo.ShortLinks.create({
-          soumissionId: (soumissionMeta && soumissionMeta.id) || '',
-          clientName: form.clientName || form.company || '',
-          editable: !!editable,
-          dataJSON,
-          linkId,
-        });
-        if (result && result.shortId) {
-          const editFlag = editable ? '&e=1' : '';
-          return `${location.origin}${location.pathname}?mode=client&s=${result.shortId}${editFlag}&lid=${linkId}`;
-        }
-      } catch (e) {
-        console.warn('ShortLinks.create failed, using long URL:', e);
-      }
-    }
-    return longFallback;
+    const longUrl = buildLongUrl(linkIdOverride, { editable });
+    if (!longUrl) return null;
+    const shortUrl = await shortenUrl(longUrl);
+    return shortUrl || longUrl;
   };
 
   // Legacy long-URL builder kept for previews and email body fallback.
@@ -942,7 +925,7 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
     pushToast('Génération du lien court…');
     const url = await createShortLink(true);
     setShortening(false);
-    if (!url) { pushToast('Erreur : Apps Script non joignable'); return; }
+    if (!url) { pushToast('Erreur lors de la génération du lien'); return; }
     copyToClipboard(url, `Lien client copié : ${url}`);
     const reference = buildLongUrl(undefined, { editable: true });
     recordSentLink({ url: reference, shortUrl: url !== reference ? url : '' });
@@ -957,7 +940,7 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
 
   const handleOpenClientPreview = async () => {
     const url = await createShortLink(true);
-    if (!url) { pushToast('Erreur : Apps Script non joignable'); return; }
+    if (!url) { pushToast('Erreur lors de la génération du lien'); return; }
     window.open(url, '_blank');
   };
 
@@ -966,7 +949,7 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
     pushToast('Génération du lien court…');
     const url = await createShortLink(false);
     setShortening(false);
-    if (!url) { pushToast('Erreur : Apps Script non joignable'); return; }
+    if (!url) { pushToast('Erreur lors de la génération du lien'); return; }
     copyToClipboard(url, `Lien lecture seule copié : ${url}`);
   };
 
@@ -1026,26 +1009,38 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
               <div style={{ color: 'var(--ip-muted)', fontSize: 13 }}>Ces champs sont repris en en-tête du PDF généré.</div>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {(() => {
+                const k = contactKey(form);
+                const isExisting = !!(k && loadStandaloneContacts().some(c => contactKey(c) === k));
+                return (
               <button
                 type="button"
                 onClick={() => {
                   const hasAny = (form.clientName || form.company || form.email || form.phone || form.address);
                   if (!hasAny) { pushToast('Remplissez au moins un champ avant d\'enregistrer'); return; }
-                  const ok = saveStandaloneContact(form);
-                  if (ok) pushToast('✓ Contact enregistré');
+                  const res = saveStandaloneContact(form);
+                  if (res && res.updated) pushToast('✓ Contact mis à jour');
+                  else if (res && res.created) pushToast('✓ Contact enregistré');
                   else pushToast('Impossible d\'enregistrer ce contact');
                 }}
-                title="Enregistrer ce contact (même partiellement rempli)"
+                title={isExisting ? 'Mettre à jour ce contact existant' : 'Enregistrer ce contact comme nouveau'}
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: 6,
                   padding: '8px 12px', fontSize: 12.5,
-                  border: '1px solid var(--ip-line)', borderRadius: 9,
-                  background: '#fff', cursor: 'pointer', color: 'var(--ip-ink)', fontWeight: 500,
+                  border: '1px solid ' + (isExisting ? 'var(--ip-orange)' : 'var(--ip-line)'), borderRadius: 9,
+                  background: isExisting ? 'rgba(244,165,28,0.10)' : '#fff', cursor: 'pointer',
+                  color: 'var(--ip-ink)', fontWeight: isExisting ? 600 : 500,
                 }}
               >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
-                Enregistrer ce contact
+                {isExisting ? (
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                ) : (
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+                )}
+                {isExisting ? 'Mettre à jour' : 'Enregistrer ce contact'}
               </button>
+                );
+              })()}
               <ContactsPicker
                 currentEmail={form.email}
                 onPick={(c) => {
