@@ -833,7 +833,9 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
   const createShortLink = async (editable, linkIdOverride) => {
     const longUrl = buildLongUrl(linkIdOverride, { editable });
     if (!longUrl) return null;
+    console.log('[iPropre] createShortLink v2 (is.gd/tinyurl) — long URL length:', longUrl.length);
     const shortUrl = await shortenUrl(longUrl);
+    console.log('[iPropre] createShortLink result:', shortUrl || longUrl);
     return shortUrl || longUrl;
   };
 
@@ -909,7 +911,38 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
     return null;
   };
 
+  // Fallback copy: works AFTER an async/await (the user-gesture context is
+  // lost, so navigator.clipboard.writeText() can silently fail). execCommand
+  // on a temporary textarea works in that case.
+  const copyToClipboardSync = (text) => {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.top = '0';
+      ta.style.left = '0';
+      ta.style.opacity = '0';
+      ta.style.pointerEvents = 'none';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      ta.setSelectionRange(0, text.length);
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return !!ok;
+    } catch (e) { return false; }
+  };
+
   const copyToClipboard = (text, successMsg) => {
+    // 1) Try the sync execCommand path first — it works whether or not the
+    //    user-gesture context is still active. This is what fixes the
+    //    "I have to click 2-3 times" bug after the async shortener call.
+    if (copyToClipboardSync(text)) {
+      pushToast(successMsg);
+      return;
+    }
+    // 2) Modern async path as fallback (some browsers prefer it).
     if (navigator.clipboard) {
       navigator.clipboard.writeText(text).then(
         () => pushToast(successMsg),

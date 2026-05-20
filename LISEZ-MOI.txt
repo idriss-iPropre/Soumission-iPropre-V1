@@ -1,28 +1,72 @@
-RETOUR AUX LIENS IS.GD - 20 mai 2026
-=====================================
+CORRECTION LIENS + CLIPBOARD - 20 mai 2026
+============================================
 
-Problème :
-  Les nouveaux liens courts générés via le backend Google Sheets
-  (format ?mode=client&s=GMpcB&...) ne fonctionnaient plus — la page
-  restait blanche car la résolution côté serveur échouait.
+DEUX PROBLÈMES CORRIGÉS :
+
+────────────────────────────────────────────
+PROBLÈME 1 — Liens ?mode=client&s=rLkWW (page blanche)
+────────────────────────────────────────────
+
+Cause :
+  Les liens au format ?s=rLkWW sont générés par l'ancien système
+  qui appelle Google Sheets pour résoudre l'ID. Ce système ne
+  fonctionne plus de manière fiable.
 
 Solution :
-  Retour à l'ancien système éprouvé : on construit l'URL complète avec
-  les données encodées DANS l'URL (?mode=client&data=...) puis on la
-  raccourcit via is.gd / v.gd / tinyurl. Ces services se contentent
-  d'une redirection HTTP — pas de dépendance backend.
+  Le fichier envoi.jsx joint utilise UNIQUEMENT is.gd / v.gd /
+  tinyurl pour raccourcir les URLs. Les NOUVEAUX liens seront du
+  format :
 
-Avantages :
-  - Les liens ouvrent instantanément (juste une redirection)
-  - Pas de dépendance Apps Script / Google Sheets
-  - Les liens restent valides à vie tant que le service de
-    raccourcissement existe
-  - Compatible avec vos anciens liens (https://is.gd/KqB0QZ etc.)
+      https://is.gd/abc123          (idéal, ~22 caractères)
+      https://v.gd/abc123           (secours)
+      https://tinyurl.com/AaBbCcDd  (URLs longues > 4800 car.)
 
-Fichier à déployer :
-  - envoi.jsx (remplacer le fichier existant)
+  Si vous voyez encore "?mode=client&s=XXX" après déploiement,
+  c'est que le fichier n'est PAS encore en ligne (cache GitHub
+  Pages ou push manquant).
 
-Note : les liens déjà générés avec ?mode=client&s=... ne fonctionneront
-toujours pas — il faut les régénérer. Les NOUVEAUX liens seront du
-format raccourci is.gd (ex : https://is.gd/AbCdEf) qui marchent comme
-au premier jour.
+────────────────────────────────────────────
+PROBLÈME 2 — Il faut cliquer plusieurs fois pour copier
+────────────────────────────────────────────
+
+Cause :
+  Le navigateur bloque navigator.clipboard.writeText() après un
+  "await" parce que le geste utilisateur est perdu. Du coup :
+    1er clic → silencieux ou prompt non visible
+    2e clic → idem
+    3e clic → parfois ça marche
+
+Solution :
+  Méthode de copie synchrone (textarea + execCommand) qui
+  fonctionne TOUJOURS, même après une attente asynchrone.
+
+────────────────────────────────────────────
+COMMENT VÉRIFIER QUE LE FICHIER EST BIEN DÉPLOYÉ
+────────────────────────────────────────────
+
+1. Ouvrez l'app dans Chrome
+2. Cmd+Option+J (Mac) ou F12 (Windows) → onglet "Console"
+3. Cliquez sur "Formulaire" ou "Lecture seule"
+4. Vous devez voir dans la console :
+
+   [iPropre] createShortLink v2 (is.gd/tinyurl) — long URL length: ...
+   [iPropre] createShortLink result: https://is.gd/...
+
+   Si vous voyez l'ancien message ou rien → le fichier n'est PAS
+   déployé. Forcer le rafraîchissement avec Cmd+Shift+R.
+
+────────────────────────────────────────────
+DÉPLOIEMENT
+────────────────────────────────────────────
+
+Fichier à pousser sur GitHub :
+  - envoi.jsx  (remplacer celui dans le dépôt)
+
+Étapes :
+  1. Remplacer envoi.jsx dans votre dossier de travail local
+  2. git add envoi.jsx && git commit -m "Fix liens + clipboard"
+  3. git push
+  4. Attendre 1-2 minutes que GitHub Pages republie
+  5. Cmd+Shift+R sur l'app pour vider le cache
+  6. Tester : ouvrir DevTools → Console → cliquer "Formulaire"
+     → vérifier le message console "[iPropre] createShortLink v2"
