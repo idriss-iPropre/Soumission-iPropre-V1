@@ -395,6 +395,23 @@ function uploadDocx(ss, p) {
 }
 
 // ---------- Helper de diagnostic ----------
+// ⚠️ NE PAS exécuter shortenUrlServerSide directement depuis l'éditeur — elle
+// attend un paramètre p venant d'une requête HTTP. Utilise _testShortener()
+// ci-dessous à la place.
+
+// Teste tous les services de raccourcissement depuis l'éditeur Apps Script.
+// Lance cette fonction et regarde Affichage > Journaux pour voir lequel répond.
+function _testShortener() {
+  const testUrl = 'https://idriss-ipropre.github.io/Soumission-iPropre-V1/?mode=client&data=TEST123';
+  Logger.log('Test avec URL : ' + testUrl);
+  try {
+    const result = shortenUrlServerSide({ url: testUrl });
+    Logger.log('✓ SUCCÈS — service: ' + result.service + ' → ' + result.shortUrl);
+  } catch (e) {
+    Logger.log('✗ ÉCHEC : ' + e.toString());
+  }
+}
+
 // Lance cette fonction depuis l'éditeur Apps Script pour vérifier que tout est OK :
 //   - les onglets existent
 //   - le dossier Drive est accessible
