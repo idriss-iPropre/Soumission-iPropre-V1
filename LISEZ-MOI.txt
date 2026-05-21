@@ -1,95 +1,22 @@
-CORRECTION FINALE — RACCOURCISSEUR + CLIPBOARD - 20 mai 2026
-==============================================================
+MISE À JOUR FAVICON v3 - 21 mai 2026
+====================================
 
-DEUX CORRECTIONS dans cette mise à jour :
+Nouveau favicon basé sur le logo « R DEVIS » (R orange + faucon
+blanc/rouge + bandeau "DEVIS"). Cadrage serré sur la silhouette du R
+avec une petite marge (~6 %) pour que le logo soit le plus grand
+possible dans le carré de l'onglet sans toucher les bords.
 
-═══════════════════════════════════════════════════════════
-1. RACCOURCISSEUR : DA.GD AJOUTÉ EN PREMIER
-═══════════════════════════════════════════════════════════
+Fichiers à déployer :
+  - index.html              (les <link rel="icon"> passent à ?v=3
+                             pour forcer le rafraîchissement du cache)
+  - assets/favicon-256.png  (favicon haute résolution + Apple Touch)
+  - assets/favicon-32.png   (favicon standard navigateur)
+  - assets/favicon-16.png   (favicon petit format)
 
-Diagnostic depuis votre console :
-  [iPropre] Shortener (server-side tinyurl): https://tinyurl.com/...
+Une fois en place :
+  - L'onglet du navigateur affichera le R orange iPropre net.
+  - Si ajouté à l'écran d'accueil mobile, l'icône sera également utilisée.
 
-Apps Script a réussi à appeler tinyurl mais is.gd et v.gd ont
-échoué. Cause probable : is.gd rate-limite les IP Google
-(Apps Script tourne sur des IPs partagées).
-
-Solution : ajout de da.gd EN PREMIER dans la liste des services.
-da.gd est un raccourcisseur fiable, sans page de prévisualisation
-ni publicités, et n'a pas de problème avec les IP Google.
-
-Ordre essayé par Apps Script :
-  1. da.gd      → https://da.gd/abc        (idéal — pas d'ad)
-  2. is.gd      → https://is.gd/abc        (si da.gd indisponible)
-  3. v.gd       → https://v.gd/abc
-  4. spoo.me    → https://spoo.me/abc
-  5. tinyurl    → dernier recours (page preview avec pubs)
-
-Logs Apps Script améliorés : chaque échec est enregistré avec
-sa raison (HTTP 4xx, réponse invalide, etc.). Pour les voir :
-  Apps Script → Exécutions → cliquer une exécution → Journaux.
-
-═══════════════════════════════════════════════════════════
-2. CLIPBOARD : COPIE QUI MARCHE DU PREMIER COUP
-═══════════════════════════════════════════════════════════
-
-Problème :
-  Après un `await`, le navigateur perd le "user gesture token",
-  donc `document.execCommand('copy')` ET `navigator.clipboard`
-  échouent. Le code tombait sur `window.prompt()` qui était
-  supprimé parce que le PDF s'ouvrait dans un autre onglet.
-
-Solution moderne :
-  Utilisation de `navigator.clipboard.write([new ClipboardItem({
-    'text/plain': promise
-  })])` — l'appel CLIPBOARD est synchrone (préserve le geste),
-  et la promesse est résolue PLUS TARD avec le lien généré.
-
-  Chrome / Safari / Edge supportent ce pattern. C'est la méthode
-  recommandée officielle pour copier un résultat asynchrone.
-
-Résultat :
-  Un seul clic suffit pour copier "Formulaire" ou "Lecture seule".
-  Le toast "Lien copié : https://..." s'affiche dès que la
-  génération aboutit.
-
-═══════════════════════════════════════════════════════════
-DÉPLOIEMENT
-═══════════════════════════════════════════════════════════
-
-A. METTRE À JOUR APPS SCRIPT (obligatoire) :
-   1. script.google.com → ouvrir votre projet Soumissions iPropre
-   2. Coller apps-script-corrige.gs PAR-DESSUS le code existant
-   3. Cmd+S pour sauvegarder
-   4. Menu Déployer → Gérer les déploiements → crayon ✎
-      → Version : "Nouvelle version" → Déployer
-   5. L'URL reste la même — pas de modification côté app
-
-B. POUSSER envoi.jsx SUR GITHUB :
-   1. Remplacer envoi.jsx dans votre dépôt local
-   2. git add envoi.jsx
-   3. git commit -m "Fix shortener + clipboard"
-   4. git push
-   5. Attendre 1-2 min que GitHub Pages republie
-   6. Cmd+Shift+R dans le navigateur
-
-═══════════════════════════════════════════════════════════
-COMMENT VÉRIFIER QUE TOUT FONCTIONNE
-═══════════════════════════════════════════════════════════
-
-1. Ouvrir DevTools (F12) → Console
-2. Aller dans l'onglet Envoi
-3. Cliquer "Formulaire" ou "Lecture seule"
-4. Vous DEVEZ voir dans la console :
-
-   [iPropre] createShortLink v2 (is.gd/tinyurl) — long URL length: 1984
-   [iPropre] Shortener (server-side da.gd): https://da.gd/xxxxx
-   [iPropre] createShortLink result: https://da.gd/xxxxx
-
-5. Le lien est copié DÈS LE PREMIER CLIC
-6. Toast affiché : "Lien copié : https://da.gd/xxxxx"
-
-Si vous voyez encore "tinyurl" → Apps Script n'est PAS redéployé.
-Si vous voyez "is.gd" → encore mieux, ça veut dire is.gd a
-accepté la requête cette fois-ci.
-
+Astuce : si le navigateur affiche encore l'ancienne icône, videz le cache
+(Cmd+Shift+R sur Mac / Ctrl+F5 sur Windows) ou ouvrez en navigation privée.
+Le paramètre ?v=3 ajouté aux URLs aide à forcer ce rafraîchissement.
