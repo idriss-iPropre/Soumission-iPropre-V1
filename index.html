@@ -31,20 +31,37 @@
     --font-serif: 'Playfair Display', 'Times New Roman', serif;
     --font-sans: 'Inter', system-ui, sans-serif;
     --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+    /* Liquid glass */
+    --glass-bg: rgba(255, 255, 255, 0.66);
+    --glass-bg-strong: rgba(255, 255, 255, 0.82);
+    --glass-border: rgba(255, 255, 255, 0.72);
+    --glass-shadow: 0 10px 34px rgba(31, 32, 40, 0.07), inset 0 1px 0 rgba(255, 255, 255, 0.75);
+    --glass-blur: saturate(165%) blur(18px);
   }
 
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; background: var(--ip-bg); color: var(--ip-ink); font-family: var(--font-sans); font-size: 15px; line-height: 1.5; }
+  body {
+    background:
+      radial-gradient(1100px 620px at 6% -6%, rgba(244, 165, 28, 0.10), transparent 60%),
+      radial-gradient(900px 560px at 98% 10%, rgba(140, 155, 212, 0.13), transparent 55%),
+      radial-gradient(860px 640px at 50% 112%, rgba(245, 168, 128, 0.10), transparent 55%),
+      var(--ip-bg);
+    background-attachment: fixed;
+  }
   button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
   input, select, textarea { font-family: inherit; font-size: inherit; color: inherit; }
   a { color: inherit; }
+  a:hover { color: var(--ip-orange); }
 
   /* ---------- Top bar ---------- */
   .topbar {
     position: sticky; top: 0; z-index: 40;
-    background: rgba(250, 248, 243, 0.92);
-    backdrop-filter: saturate(140%) blur(10px);
-    border-bottom: 1px solid var(--ip-line);
+    background: rgba(250, 248, 243, 0.58);
+    -webkit-backdrop-filter: saturate(170%) blur(22px);
+    backdrop-filter: saturate(170%) blur(22px);
+    border-bottom: 1px solid rgba(15, 15, 16, 0.06);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.55) inset;
   }
   .topbar-inner {
     max-width: 1320px; margin: 0 auto;
@@ -83,16 +100,21 @@
   .page-head .sub { color: var(--ip-muted); font-size: 14px; max-width: 520px; }
   .eyebrow { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ip-orange); margin-bottom: 12px; display: block; }
 
-  /* ---------- Cards & panels ---------- */
-  .card { background: var(--ip-bg-card); border: 1px solid var(--ip-line); border-radius: 18px; }
+  /* ---------- Cards & panels — flat surfaces, soft glass ---------- */
+  .card {
+    background: var(--glass-bg-strong);
+    border: 1px solid var(--glass-border);
+    border-radius: 20px;
+    box-shadow: var(--glass-shadow);
+  }
   .card-pad { padding: 24px; }
 
   /* ---------- Buttons ---------- */
   .btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 10px; font-size: 13.5px; font-weight: 500; transition: all 0.15s ease; border: 1px solid transparent; }
   .btn-primary { background: var(--ip-ink); color: #fff; }
   .btn-primary:hover { background: #2a2a30; }
-  .btn-ghost { border-color: var(--ip-line); background: #fff; }
-  .btn-ghost:hover { border-color: var(--ip-ink); }
+  .btn-ghost { border-color: rgba(15, 15, 16, 0.10); background: rgba(255, 255, 255, 0.72); }
+  .btn-ghost:hover { border-color: var(--ip-ink); background: #fff; }
   .btn-orange { background: var(--ip-orange); color: #fff; }
   .btn-orange:hover { background: #d99115; }
   .btn-icon { width: 28px; height: 28px; padding: 0; border-radius: 8px; display: inline-grid; place-items: center; border: 1px solid var(--ip-line); background: #fff; }
@@ -104,13 +126,16 @@
   .page.active { display: block; }
   @keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 
-  /* ---------- Footer action bar ---------- */
+  /* ---------- Footer action bar — dark liquid glass ---------- */
   .actionbar {
     position: sticky; bottom: 12px; z-index: 30;
     margin: 24px auto 0; padding: 8px 14px;
     display: flex; align-items: center; gap: 14px;
-    background: var(--ip-ink); color: #fff; border-radius: 12px;
-    box-shadow: 0 8px 28px rgba(15,15,16,0.16);
+    background: rgba(17, 17, 20, 0.82); color: #fff; border-radius: 16px;
+    -webkit-backdrop-filter: saturate(150%) blur(16px);
+    backdrop-filter: saturate(150%) blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    box-shadow: 0 12px 34px rgba(15, 15, 16, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.08);
   }
   .actionbar .total-box { display: flex; align-items: baseline; gap: 8px; padding-right: 12px; border-right: 1px solid rgba(255,255,255,0.14); }
   .actionbar .total-box .k { font-family: var(--font-mono); font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.12em; color: #a9a9b0; }
@@ -136,16 +161,37 @@
   .pill.blue { background: var(--ip-blue-soft); color: #2f3e7e; }
   .pill.coral { background: var(--ip-coral-soft); color: #8a3d0b; }
 
-  /* ---------- Toast ---------- */
+  /* ---------- Toast — dark glass ---------- */
   .toast-stack { position: fixed; top: 20px; right: 20px; z-index: 100; display: flex; flex-direction: column; gap: 10px; }
-  .toast { background: var(--ip-ink); color: #fff; padding: 12px 16px; border-radius: 12px; font-size: 13.5px; display: flex; align-items: center; gap: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); animation: slideIn 0.25s ease both; }
+  .toast {
+    background: rgba(17, 17, 20, 0.86); color: #fff; padding: 12px 16px; border-radius: 14px;
+    font-size: 13.5px; display: flex; align-items: center; gap: 10px;
+    -webkit-backdrop-filter: saturate(150%) blur(14px);
+    backdrop-filter: saturate(150%) blur(14px);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    animation: slideIn 0.25s ease both;
+  }
   .toast .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ip-orange); }
   @keyframes slideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
   @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
-  /* ---------- Modal ---------- */
-  .modal-bg { position: fixed; inset: 0; background: rgba(15,15,16,0.55); backdrop-filter: blur(4px); z-index: 80; display: grid; place-items: center; animation: fadeIn 0.2s ease; padding: 20px; }
-  .modal { background: #fff; border-radius: 20px; max-width: 680px; width: 100%; max-height: 88vh; overflow: auto; animation: popIn 0.25s ease; }
+  /* ---------- Modal — frosted glass ---------- */
+  .modal-bg {
+    position: fixed; inset: 0; background: rgba(22, 22, 30, 0.42);
+    -webkit-backdrop-filter: blur(9px) saturate(130%);
+    backdrop-filter: blur(9px) saturate(130%);
+    z-index: 80; display: grid; place-items: center; animation: fadeIn 0.2s ease; padding: 20px;
+  }
+  .modal {
+    background: rgba(255, 255, 255, 0.92);
+    -webkit-backdrop-filter: saturate(170%) blur(26px);
+    backdrop-filter: saturate(170%) blur(26px);
+    border: 1px solid rgba(255, 255, 255, 0.75);
+    border-radius: 22px; max-width: 680px; width: 100%; max-height: 88vh; overflow: auto;
+    box-shadow: 0 24px 70px rgba(15, 15, 16, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.85);
+    animation: popIn 0.25s ease;
+  }
   @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
   @keyframes popIn { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
 
@@ -178,16 +224,16 @@
   .sel.col-offre { background-color: rgba(140,155,212,0.08); }
   .sel.col-vip { background-color: rgba(245,168,128,0.08); }
 
-  .txt-input { width: 100%; padding: 9px 12px; border-radius: 9px; background: #fff; border: 1px solid var(--ip-line); font-size: 13px; transition: border 0.12s; }
-  .txt-input:focus { outline: none; border-color: var(--ip-ink); }
+  .txt-input { width: 100%; padding: 9px 12px; border-radius: 10px; background: rgba(255, 255, 255, 0.85); border: 1px solid rgba(15, 15, 16, 0.10); font-size: 13px; transition: border 0.12s, background 0.12s; }
+  .txt-input:focus { outline: none; border-color: var(--ip-ink); background: #fff; }
 
   /* Plan column headers */
   .plan-head { position: relative; padding: 18px 14px !important; text-align: center !important; }
   .plan-head .lbl { font-family: var(--font-serif); font-size: 17px; font-weight: 700; text-transform: none; letter-spacing: 0; color: var(--ip-ink); }
   .plan-head .sub { font-size: 10.5px; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.16em; margin-top: 2px; }
-  .plan-head.initial { background: #F4F2ED; }
-  .plan-head.offre { background: linear-gradient(180deg, #DFE4F4 0%, #C9D1EC 100%); }
-  .plan-head.vip { background: linear-gradient(180deg, #FBDECB 0%, #F5B997 100%); }
+  .plan-head.initial { background: #F2F0EA; }
+  .plan-head.offre { background: #DCE2F3; }
+  .plan-head.vip { background: #F8DCC7; }
   .plan-head .ribbon { display: inline-block; font-size: 10px; font-family: var(--font-mono); letter-spacing: 0.15em; text-transform: uppercase; background: var(--ip-orange); color: #fff; padding: 3px 8px; border-radius: 999px; margin-top: 6px; }
 
   /* ---------- Responsive ---------- */
@@ -471,7 +517,7 @@
 
 <!-- Core (plain JS, no Babel) — backend client + repositories. Load BEFORE the JSX modules. -->
 <script src="core/api.js?v=1"></script>
-<script src="core/repo.js?v=2"></script>
+<script src="core/repo.js?v=3"></script>
 <script src="core/pdf.js?v=3"></script>
 
 <!-- Tweaks host -->
@@ -479,8 +525,9 @@
 
 <!-- App modules -->
 <script type="text/babel" src="common.jsx"></script>
+<script type="text/babel" src="client-guide.jsx?v=1"></script>
 <script type="text/babel" src="presentation.jsx"></script>
-<script type="text/babel" src="soumission.jsx"></script>
+<script type="text/babel" src="soumission.jsx?v=2"></script>
 <script type="text/babel" src="galerie.jsx"></script>
 <script type="text/babel" src="annexes.jsx"></script>
 <!-- Auth: only loaded in commercial mode. In client mode (?mode=client) we
@@ -501,11 +548,12 @@
   document.currentScript.parentNode.insertBefore(s, document.currentScript.nextSibling);
 })();
 </script>
-<script type="text/babel" src="storage.jsx?v=2"></script>
+<script type="text/babel" src="storage.jsx?v=3"></script>
 <script type="text/babel" src="gsheets.jsx"></script>
 <script src="logo-data.js"></script>
-<script type="text/babel" src="envoi.jsx"></script>
-<script type="text/babel" src="app.jsx"></script>
+<script type="text/babel" src="carte.jsx?v=1"></script>
+<script type="text/babel" src="envoi.jsx?v=3"></script>
+<script type="text/babel" src="app.jsx?v=2"></script>
 
 </body>
 </html>

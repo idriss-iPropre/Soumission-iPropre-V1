@@ -11,6 +11,47 @@ function buildPrintableHtml(state, form, initialSnapshot) {
   const esc = (s) => String(s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
     const today = new Date().toLocaleDateString('fr-CA', { year:'numeric', month:'long', day:'numeric' });
 
+    // ---- Comparaison entre plans (suit le bouton « Comparaison » de la page Soumission) ----
+    const cmpMode = state.compareMode || 'arrows';
+    const cmpVisible = state.compareVisible !== false;
+    const cmpBaseIdx = visiblePlans.length ? visiblePlans[0].i : 0;
+    const cmpBaseLabel = PLAN_DEFS[cmpBaseIdx] ? PLAN_DEFS[cmpBaseIdx].label : '';
+    const cmpFn = (typeof window !== 'undefined' && typeof window.freqChangeVs === 'function') ? window.freqChangeVs : null;
+    const pdfArrows = !!cmpFn && cmpVisible && visiblePlans.length > 1 && (cmpMode === 'arrows' || cmpMode === 'both');
+    const pdfSummary = !!cmpFn && cmpVisible && visiblePlans.length > 1 && (cmpMode === 'summary' || cmpMode === 'both');
+    const arrowBadge = (kind) => {
+      if (!kind) return '';
+      const m = { up: ['↑', '#1e6b38', 'rgba(44,138,74,0.14)'], down: ['↓', '#a03024', 'rgba(192,57,43,0.13)'], diff: ['≠', '#2f3e7e', 'rgba(140,155,212,0.2)'] }[kind];
+      if (!m) return '';
+      return `<span style="display:inline-block;min-width:12px;padding:1px 4px;border-radius:4px;background:${m[2]};color:${m[1]};font-size:9px;font-weight:800;margin-left:5px;vertical-align:middle;line-height:1.3">${m[0]}</span>`;
+    };
+    const pdfDeltas = {};
+    if (pdfSummary) {
+      for (const { i } of visiblePlans) {
+        if (i === cmpBaseIdx) continue;
+        let up = 0, down = 0, diff = 0;
+        state.sections.forEach(sec => (sec.rows || []).forEach(r => {
+          if (r.hideCompare) return;
+          const ind = cmpFn(r.v && r.v[i], r.v && r.v[cmpBaseIdx]);
+          if (!ind) return;
+          if (ind.kind === 'up') up++; else if (ind.kind === 'down') down++; else diff++;
+        }));
+        pdfDeltas[i] = { up, down, diff };
+      }
+    }
+    const thChips = (pi) => {
+      if (!pdfSummary) return '';
+      const chip = (txt, color) => `<span style="background:rgba(255,255,255,0.9);color:${color};padding:1px 6px;border-radius:999px;font-size:8.5px;font-weight:800;letter-spacing:0">${txt}</span>`;
+      if (pi === cmpBaseIdx) return `<div style="margin-top:3px;text-transform:none;letter-spacing:0.04em">${chip('Référence', '#555')}</div>`;
+      const d = pdfDeltas[pi] || { up: 0, down: 0, diff: 0 };
+      const parts = [];
+      if (d.up) parts.push(chip('↑ ' + d.up, '#1e6b38'));
+      if (d.down) parts.push(chip('↓ ' + d.down, '#a03024'));
+      if (d.diff) parts.push(chip('≠ ' + d.diff, '#2f3e7e'));
+      if (!parts.length) parts.push(chip('= identique', '#888'));
+      return `<div style="margin-top:3px;display:flex;gap:3px;justify-content:center;text-transform:none;letter-spacing:0">${parts.join('')}</div>`;
+    };
+
     // Column widths fixed for alignment across all tables
     const planColW = `${(60 / Math.max(visiblePlans.length, 1)).toFixed(2)}%`;
     const COLW = { label: '40%', plan: planColW };
@@ -28,16 +69,20 @@ function buildPrintableHtml(state, form, initialSnapshot) {
     const sectionsHtml = state.sections.map((sec, secIdx) => {
       const rows = sec.rows.map((r, rowIdx) => {
         const isAdded = !!r.clientAdded;
+        const fmt = r.fmt || {};
         const snap = !isAdded && initialSnapshot ? initialSnapshot.sections?.[secIdx]?.rows?.[rowIdx] : null;
         const labelEdited = !!snap && r.label !== snap.label;
-        const labelHtml = isAdded
+        const fmtStyle = `${fmt.b ? 'font-weight:700;' : ''}${fmt.i ? 'font-style:italic;' : ''}${fmt.color ? `color:${fmt.color};` : ''}`;
+        const rawLabel = isAdded
           ? `<span style="display:inline-block;padding:2px 7px;background:#F4A51C;color:#fff;font-size:9px;font-family:'JetBrains Mono',monospace;letter-spacing:0.1em;text-transform:uppercase;border-radius:999px;margin-right:6px;vertical-align:middle">Ajouté</span>${esc(r.label) || '<span style="color:#bbb">—</span>'}`
           : labelEdited
             ? `<span style="background:rgba(244,165,28,0.18);padding:2px 5px;border-radius:3px;border-bottom:1.5px solid #F4A51C">${esc(r.label) || '<span style="color:#bbb">—</span>'}</span>`
             : `${esc(r.label) || '<span style="color:#bbb">—</span>'}`;
+        const labelHtml = fmtStyle ? `<span style="${fmtStyle}">${rawLabel}</span>` : rawLabel;
         const rowEdited = labelEdited || (snap && r.v.some((v, pi) => v !== snap.v?.[pi]));
+        const trBg = fmt.bg ? ` style="background:${fmt.bg}"` : (isAdded ? ' style="background:rgba(244,165,28,0.05)"' : rowEdited ? ' style="background:rgba(244,165,28,0.04)"' : '');
         return `
-        <tr${isAdded ? ' style="background:rgba(244,165,28,0.05)"' : rowEdited ? ' style="background:rgba(244,165,28,0.04)"' : ''}>
+        <tr${trBg}>
           <td style="padding:9px 12px;border-bottom:1px solid #ededed;width:${COLW.label};vertical-align:middle;font-weight:500">${labelHtml}</td>
           ${visiblePlans.map(({ p, i: pi }) => {
             const isSel = pi === state.selectedPlan;
@@ -50,7 +95,8 @@ function buildPrintableHtml(state, form, initialSnapshot) {
                 ? (isSel ? 'background:linear-gradient(180deg,#FFF4DA 0%,#FFE7B0 100%);font-weight:700;color:#7c5300;border-left:2px solid #F4A51C;border-right:2px solid #F4A51C' : 'background:rgba(244,165,28,0.18);font-weight:600;color:#7c5300')
                 : (isSel ? 'background:#FFF4DA;font-weight:600;color:#111' : 'color:#555');
             const editBadge = cellEdited ? '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#F4A51C;margin-left:5px;vertical-align:middle" title="Modifié"></span>' : '';
-            return `<td style="padding:9px 12px;border-bottom:1px solid #ededed;text-align:center;width:${COLW.plan};vertical-align:middle;${cellStyle}">${isEmptyAdded ? 'À discuter' : esc(val)}${editBadge}</td>`;
+            const cmpBadge = (pdfArrows && pi !== cmpBaseIdx && !r.hideCompare) ? arrowBadge((cmpFn(r.v[pi], r.v[cmpBaseIdx]) || {}).kind) : '';
+            return `<td style="padding:9px 12px;border-bottom:1px solid #ededed;text-align:center;width:${COLW.plan};vertical-align:middle;${cellStyle}">${isEmptyAdded ? 'À discuter' : esc(val)}${editBadge}${cmpBadge}</td>`;
           }).join('')}
         </tr>`;
       }).join('');
@@ -70,7 +116,7 @@ function buildPrintableHtml(state, form, initialSnapshot) {
                 <th style="padding:8px 12px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.12em;color:#888;border-bottom:1px solid #e0e0e0;font-weight:600">Prestation</th>
                 ${visiblePlans.map(({ p, i: pi }) => {
                   const isSel = pi === state.selectedPlan;
-                  return `<th style="padding:8px 6px;text-align:center;font-size:10px;text-transform:uppercase;letter-spacing:0.12em;border-bottom:1px solid #e0e0e0;font-weight:600;${isSel?'background:#F4A51C;color:#fff':'color:#888'}">${esc(p.label)}${isSel?' ✓':''}</th>`;
+                  return `<th style="padding:8px 6px;text-align:center;font-size:10px;text-transform:uppercase;letter-spacing:0.12em;border-bottom:1px solid #e0e0e0;font-weight:600;${isSel?'background:#F4A51C;color:#fff':'color:#888'}">${esc(p.label)}${isSel?' ✓':''}${thChips(pi)}</th>`;
                 }).join('')}
               </tr>
             </thead>
@@ -183,6 +229,7 @@ function buildPrintableHtml(state, form, initialSnapshot) {
   </div>` : ''}
 
   <h2>Détail de la soumission</h2>
+  ${pdfArrows ? `<div style="margin:-6px 0 12px;font-size:10.5px;color:#888;font-family:'JetBrains Mono',monospace"><span style="color:#1e6b38;font-weight:800">↑</span> plus de service &nbsp;·&nbsp; <span style="color:#a03024;font-weight:800">↓</span> moins &nbsp;·&nbsp; <span style="color:#2f3e7e;font-weight:800">≠</span> différent &nbsp;—&nbsp; comparé au plan ${esc(cmpBaseLabel)}</div>` : ''}
   ${sectionsHtml}
 
   <h2>Tarification</h2>
@@ -659,6 +706,7 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
   // Load persisted form keyed by the current soumission id (or the "new" slot).
   const [form, setForm] = React.useState(() => loadEnvoiForm(currentSoumId));
   const [sent, setSent] = React.useState(false);
+  const [showCardScan, setShowCardScan] = React.useState(false);
   const lastSoumIdRef = React.useRef(currentSoumId);
 
   // When switching soumissions (id changes), reload that soumission's form.
@@ -1109,6 +1157,21 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
               <div style={{ color: 'var(--ip-muted)', fontSize: 13 }}>Ces champs sont repris en en-tête du PDF généré.</div>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => setShowCardScan(true)}
+                title="Photographier une carte de visite — les champs se remplissent automatiquement"
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  padding: '8px 12px', fontSize: 12.5,
+                  border: '1px solid var(--ip-line)', borderRadius: 9,
+                  background: '#fff', cursor: 'pointer',
+                  color: 'var(--ip-ink)', fontWeight: 500,
+                }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                Scanner une carte
+              </button>
               {(() => {
                 const k = contactKey(form);
                 const isExisting = !!(k && loadStandaloneContacts().some(c => contactKey(c) === k));
@@ -1262,6 +1325,25 @@ function EnvoiPage({ state, pushToast, onLogout, sentLinks, gsheet, soumissionMe
           </div>
         </aside>
       </div>
+
+      {/* Scan de carte de visite → remplissage auto des coordonnées */}
+      {showCardScan && typeof CardScanModal === 'function' && (
+        <CardScanModal
+          onClose={() => setShowCardScan(false)}
+          pushToast={pushToast}
+          onApply={(fields) => {
+            setForm(f => ({
+              ...f,
+              clientName: fields.clientName || f.clientName,
+              company: fields.company || f.company,
+              email: fields.email || f.email,
+              phone: fields.phone ? formatPhone(fields.phone) : f.phone,
+              address: fields.address || f.address,
+            }));
+            pushToast('✓ Coordonnées remplies — vérifiez les champs');
+          }}
+        />
+      )}
     </div>
   );
 }

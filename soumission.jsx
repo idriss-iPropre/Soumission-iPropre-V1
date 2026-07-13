@@ -117,16 +117,17 @@ function freqChangeVs(val, base) {
   return null;
 }
 
-function ChangeIndicator({ kind }) {
+function ChangeIndicator({ kind, baseLabel = 'Devis initial' }) {
   if (!kind) return null;
+  const S = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 16, height: 16, padding: '0 3px', borderRadius: 4, marginLeft: 5, flexShrink: 0, fontSize: 10, fontWeight: 800, lineHeight: 1 };
   if (kind === 'up') return (
-    <span title="Service augmenté vs Devis initial" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, borderRadius: 4, background: 'rgba(44,138,74,0.14)', color: '#2c8a4a', marginLeft: 5, flexShrink: 0, fontSize: 10, fontWeight: 800, lineHeight: 1 }}>↑</span>
+    <span title={`Service augmenté vs ${baseLabel}`} style={{ ...S, background: 'rgba(44,138,74,0.14)', color: '#1e6b38' }}>↑</span>
   );
   if (kind === 'down') return (
-    <span title="Service diminué vs Devis initial" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, borderRadius: 4, background: 'rgba(192,57,43,0.14)', color: '#c0392b', marginLeft: 5, flexShrink: 0, fontSize: 10, fontWeight: 800, lineHeight: 1 }}>↓</span>
+    <span title={`Service diminué vs ${baseLabel}`} style={{ ...S, background: 'rgba(192,57,43,0.14)', color: '#a03024' }}>↓</span>
   );
   return (
-    <span title="Service modifié vs Devis initial" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, borderRadius: 4, background: 'rgba(140,155,212,0.18)', color: '#3a4a85', marginLeft: 5, flexShrink: 0, fontSize: 10, fontWeight: 800, lineHeight: 1 }}>↔</span>
+    <span title={`Différent du plan ${baseLabel}`} style={{ ...S, background: 'rgba(140,155,212,0.18)', color: '#2f3e7e' }}>≠</span>
   );
 }
 
@@ -155,6 +156,65 @@ function SoumissionPage({ state, setState, pushToast, history, undo, future, red
   const ro = clientMode; // hide vendor-only chrome (undo/redo, hide-plan, 3-dot menus, add-section)
   const roCells = clientMode && !clientEditable; // cell-level read-only — false in edit mode
   const visibleCount = visiblePlans.length;
+
+  // ---------- Comparaison entre plans ----------
+  // compareMode ('arrows' | 'summary' | 'both') : choisi par le vendeur, voyage avec la soumission.
+  // compareVisible : le bouton afficher/masquer — pilote aussi le PDF.
+  const compareMode = state.compareMode || 'arrows';
+  const compareVisible = state.compareVisible !== false;
+  const baseIdx = visiblePlans.length ? visiblePlans[0].i : 0;
+  const baseLabel = PLAN_DEFS[baseIdx] ? PLAN_DEFS[baseIdx].label : '';
+  const canCompare = visibleCount > 1;
+  const showArrows = canCompare && compareVisible && (compareMode === 'arrows' || compareMode === 'both');
+  const showSummary = canCompare && compareVisible && (compareMode === 'summary' || compareMode === 'both');
+  const toggleCompare = () => setState(s => ({ ...s, compareVisible: s.compareVisible === false }));
+  const setCompareMode = (m) => setState(s => ({ ...s, compareMode: m }));
+  const planDeltas = React.useMemo(() => {
+    const res = {};
+    if (!canCompare) return res;
+    for (const { i } of visiblePlans) {
+      if (i === baseIdx) continue;
+      let up = 0, down = 0, diff = 0;
+      for (const sec of sections) {
+        for (const r of (sec.rows || [])) {
+          if (r.hideCompare) continue;
+          const ind = freqChangeVs(r.v && r.v[i], r.v && r.v[baseIdx]);
+          if (!ind) continue;
+          if (ind.kind === 'up') up++;
+          else if (ind.kind === 'down') down++;
+          else diff++;
+        }
+      }
+      res[i] = { up, down, diff };
+    }
+    return res;
+  }, [sections, baseIdx, canCompare, visibleCount]);
+
+  // ---------- Menu ⋯ par ligne (flèches on/off + mise en forme) ----------
+  const [rowMenu, setRowMenu] = React.useState(null); // { secIdx, rowIdx, x, y }
+  const updateRowMeta = (secIdx, rowIdx, patch) => {
+    setState(s => ({
+      ...s,
+      sections: s.sections.map((sec, si) => si !== secIdx ? sec : ({
+        ...sec,
+        rows: sec.rows.map((r, ri) => ri === rowIdx ? { ...r, ...patch } : r),
+      })),
+    }));
+  };
+  React.useEffect(() => {
+    if (!rowMenu) return;
+    const close = (e) => {
+      if (e && e.target && e.target.closest && e.target.closest('[data-row-menu]')) return;
+      setRowMenu(null);
+    };
+    const closeOnScroll = () => setRowMenu(null);
+    window.addEventListener('mousedown', close);
+    window.addEventListener('scroll', closeOnScroll, true);
+    return () => { window.removeEventListener('mousedown', close); window.removeEventListener('scroll', closeOnScroll, true); };
+  }, [rowMenu]);
+  const menuRow = rowMenu && sections[rowMenu.secIdx] ? (sections[rowMenu.secIdx].rows || [])[rowMenu.rowIdx] || null : null;
+  const menuFmt = (menuRow && menuRow.fmt) || {};
+
   // Match the table layout below: first col = 44%, plan cols share 56% equally.
   const planFr = visibleCount > 0 ? 56 / visibleCount : 56;
   const gridTpl = `44% repeat(${Math.max(visibleCount, 1)}, 1fr)`;
@@ -476,6 +536,57 @@ function SoumissionPage({ state, setState, pushToast, history, undo, future, red
         </div>
       }
 
+      {/* Barre de comparaison des plans */}
+      {canCompare && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 14, padding: '9px 14px', borderRadius: 12, background: 'rgba(255,255,255,0.62)', border: '1px solid var(--ip-line)' }}>
+          <button
+            onClick={toggleCompare}
+            title={compareVisible ? 'Masquer les indicateurs de comparaison (à l\u2019écran et dans le PDF)' : 'Afficher les indicateurs de comparaison'}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 7, padding: '6px 13px', borderRadius: 999,
+              border: '1px solid ' + (compareVisible ? 'rgba(244,165,28,0.55)' : 'var(--ip-line)'),
+              background: compareVisible ? 'rgba(244,165,28,0.13)' : '#fff',
+              fontSize: 12.5, fontWeight: 600, color: compareVisible ? '#7c5300' : 'var(--ip-muted)', cursor: 'pointer',
+            }}
+          >
+            {compareVisible ? (
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            ) : (
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+            )}
+            Comparaison {compareVisible ? 'activée' : 'masquée'}
+          </button>
+          {!ro && compareVisible && (
+            <div style={{ display: 'inline-flex', background: 'rgba(15,15,16,0.05)', borderRadius: 9, padding: 2, gap: 2 }}>
+              {[['arrows', 'Flèches'], ['summary', 'Résumé'], ['both', 'Les deux']].map(([m, lab]) => (
+                <button
+                  key={m}
+                  onClick={() => setCompareMode(m)}
+                  title={m === 'arrows' ? 'Flèches ↑↓ dans chaque cellule différente' : m === 'summary' ? 'Résumé des écarts sous le nom de chaque plan' : 'Flèches + résumé'}
+                  style={{
+                    padding: '5px 11px', fontSize: 11.5, fontWeight: 600, borderRadius: 7, border: 'none', cursor: 'pointer',
+                    background: compareMode === m ? '#fff' : 'transparent',
+                    color: compareMode === m ? 'var(--ip-ink)' : 'var(--ip-muted)',
+                    boxShadow: compareMode === m ? '0 1px 4px rgba(15,15,16,0.14)' : 'none',
+                  }}
+                >{lab}</button>
+              ))}
+            </div>
+          )}
+          {compareVisible ? (
+            <span style={{ marginLeft: 'auto', fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--ip-muted)' }}>
+              {showArrows
+                ? <React.Fragment><span style={{ color: '#1e6b38', fontWeight: 700 }}>↑</span> plus de service · <span style={{ color: '#a03024', fontWeight: 700 }}>↓</span> moins · <span style={{ color: '#2f3e7e', fontWeight: 700 }}>≠</span> différent — vs {baseLabel}</React.Fragment>
+                : <React.Fragment>Écarts résumés sous chaque plan — vs {baseLabel}</React.Fragment>}
+            </span>
+          ) : (!ro && (
+            <span style={{ marginLeft: 'auto', fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--ip-muted)' }}>
+              Masquée aussi pour le client et dans le PDF
+            </span>
+          ))}
+        </div>
+      )}
+
       {/* Plan header card */}
       <div className="card" style={{ marginBottom: 20, overflow: 'hidden' }}>
         <div className="plan-header-grid" style={{ display: 'grid', gridTemplateColumns: gridTpl }}>
@@ -502,6 +613,25 @@ function SoumissionPage({ state, setState, pushToast, history, undo, future, red
               
                 <div className="lbl">{p.label}</div>
                 <div className="sub" style={{ color: 'var(--ip-ink-2)' }}>{p.sub}</div>
+                {showSummary && (
+                  <div style={{ display: 'flex', gap: 4, justifyContent: 'center', flexWrap: 'wrap', marginTop: 7 }}>
+                    {planIdx === baseIdx ? (
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', padding: '2px 9px', borderRadius: 999, background: 'rgba(15,15,16,0.08)', color: 'var(--ip-ink-2)' }}>Référence</span>
+                    ) : (() => {
+                      const d = planDeltas[planIdx] || { up: 0, down: 0, diff: 0 };
+                      if (!d.up && !d.down && !d.diff) {
+                        return <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, fontWeight: 700, padding: '2px 9px', borderRadius: 999, background: 'rgba(15,15,16,0.07)', color: 'var(--ip-muted)' }}>= identique</span>;
+                      }
+                      return (
+                        <React.Fragment>
+                          {d.up > 0 && <span title={`${d.up} service(s) augmenté(s) vs ${baseLabel}`} style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, fontWeight: 800, padding: '2px 8px', borderRadius: 999, background: 'rgba(255,255,255,0.85)', color: '#1e6b38' }}>↑ {d.up}</span>}
+                          {d.down > 0 && <span title={`${d.down} service(s) réduit(s) vs ${baseLabel}`} style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, fontWeight: 800, padding: '2px 8px', borderRadius: 999, background: 'rgba(255,255,255,0.85)', color: '#a03024' }}>↓ {d.down}</span>}
+                          {d.diff > 0 && <span title={`${d.diff} service(s) différent(s) vs ${baseLabel}`} style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, fontWeight: 800, padding: '2px 8px', borderRadius: 999, background: 'rgba(255,255,255,0.85)', color: '#2f3e7e' }}>≠ {d.diff}</span>}
+                        </React.Fragment>
+                      );
+                    })()}
+                  </div>
+                )}
                 {p.ribbon && <div className="ribbon">{p.ribbon}</div>}
               </button>
               {selectedPlan === planIdx &&
@@ -604,7 +734,7 @@ function SoumissionPage({ state, setState, pushToast, history, undo, future, red
               <tr>
                 <th style={{ width: '44%' }}>Prestation</th>
                 {visiblePlans.map(({ p }) => <th key={p.key} style={{ width: `${Math.min(48 / visibleCount, 22)}%`, textAlign: 'center' }}>{p.label}</th>)}
-                {!ro && <th style={{ width: 36 }}></th>}
+                {!ro && <th style={{ width: 66 }}></th>}
               </tr>
             </thead>
             <tbody>
@@ -613,6 +743,7 @@ function SoumissionPage({ state, setState, pushToast, history, undo, future, red
                 const isDragOverHere = dragOverRow && dragOverRow.secIdx === secIdx && dragOverRow.rowIdx === rowIdx;
                 const dropTopBorder = isDragOverHere && dragOverRow.position === 'before';
                 const dropBottomBorder = isDragOverHere && dragOverRow.position === 'after';
+                const rowFmt = row.fmt || {};
                 return (
                 <tr
                   key={rowIdx}
@@ -636,7 +767,7 @@ function SoumissionPage({ state, setState, pushToast, history, undo, future, red
                     setDraggedRow(null); setDragOverRow(null);
                   } : undefined}
                   style={{
-                    ...(row.clientAdded ? { background: 'rgba(244,165,28,0.05)' } : null),
+                    ...(rowFmt.bg ? { background: rowFmt.bg } : row.clientAdded ? { background: 'rgba(244,165,28,0.05)' } : null),
                     opacity: isDragging ? 0.4 : 1,
                     boxShadow: dropTopBorder ? 'inset 0 2px 0 0 var(--ip-orange)' : dropBottomBorder ? 'inset 0 -2px 0 0 var(--ip-orange)' : undefined,
                   }}>
@@ -666,7 +797,7 @@ function SoumissionPage({ state, setState, pushToast, history, undo, future, red
                       </span>
                     )}
                     {roCells && !row.clientAdded ?
-                    <div style={{ padding: '6px 10px 6px 6px', fontWeight: 500, lineHeight: 1.4, color: row.label ? 'var(--ip-ink)' : 'var(--ip-muted)' }}>
+                    <div style={{ padding: '6px 10px 6px 6px', fontWeight: rowFmt.b ? 700 : 500, fontStyle: rowFmt.i ? 'italic' : undefined, lineHeight: 1.4, color: rowFmt.color || (row.label ? 'var(--ip-ink)' : 'var(--ip-muted)') }}>
                         {row.label || <em style={{ color: '#bbb' }}>(sans nom)</em>}
                       </div> :
 
@@ -677,7 +808,7 @@ function SoumissionPage({ state, setState, pushToast, history, undo, future, red
                         value={row.label}
                         placeholder={ro ? 'Décrivez le service souhaité…' : 'Nom de la prestation…'}
                         onChange={(e) => updateRowLabel(secIdx, rowIdx, e.target.value)}
-                        style={{ border: 'none', background: 'transparent', padding: '6px 10px 6px 6px', fontWeight: 500, lineHeight: 1.4, flex: 1 }} />
+                        style={{ border: 'none', background: 'transparent', padding: '6px 10px 6px 6px', fontWeight: rowFmt.b ? 700 : 500, fontStyle: rowFmt.i ? 'italic' : undefined, color: rowFmt.color || undefined, lineHeight: 1.4, flex: 1 }} />
                       
                       </div>
                     }
@@ -687,25 +818,46 @@ function SoumissionPage({ state, setState, pushToast, history, undo, future, red
                     const snapRow = clientEditable && initialSnapshot && initialSnapshot.sections?.[secIdx]?.rows?.[rowIdx];
                     const snapVal = snapRow ? snapRow.v?.[pi] : null;
                     const cellModified = clientEditable && !row.clientAdded && snapRow && snapVal !== row.v[pi];
+                    const cmp = (showArrows && pi !== baseIdx && !row.hideCompare) ? freqChangeVs(row.v[pi], row.v[baseIdx]) : null;
                     return (
                       <td key={p.key} data-plan={p.label} data-modified={cellModified ? '1' : undefined} style={{ textAlign: 'center', background: cellModified ? 'rgba(244,165,28,0.10)' : undefined }}>
                       {roCells && !row.clientAdded ?
                         <div className={p.colCls} style={{ padding: '8px 10px', textAlign: 'center', fontSize: 13.5, color: row.v[pi] ? 'var(--ip-ink)' : 'var(--ip-muted)', fontWeight: row.v[pi] ? 500 : 400 }}>
                           {row.v[pi] || '—'}
+                          {cmp && <ChangeIndicator kind={cmp.kind} baseLabel={baseLabel} />}
                         </div> :
 
-                        <SmartSelect
-                          value={row.v[pi]}
-                          onChange={(val) => updateRowValue(secIdx, rowIdx, pi, val)}
-                          options={sec.options}
-                          extraClass={p.colCls} />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <SmartSelect
+                              value={row.v[pi]}
+                              onChange={(val) => updateRowValue(secIdx, rowIdx, pi, val)}
+                              options={sec.options}
+                              extraClass={p.colCls} />
+                          </div>
+                          {cmp && <ChangeIndicator kind={cmp.kind} baseLabel={baseLabel} />}
+                        </div>
 
                         }
                     </td>);
 
                   })}
                   {!ro &&
-                  <td className="row-delete">
+                  <td className="row-delete" style={{ whiteSpace: 'nowrap' }}>
+                    <button
+                      className="btn-icon"
+                      title="Options de la ligne (flèches, police, couleurs)"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const r = e.currentTarget.getBoundingClientRect();
+                        const isSame = rowMenu && rowMenu.secIdx === secIdx && rowMenu.rowIdx === rowIdx;
+                        setRowMenu(isSame ? null : { secIdx, rowIdx, x: r.right, y: r.bottom });
+                      }}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      style={{ marginRight: 4, background: rowMenu && rowMenu.secIdx === secIdx && rowMenu.rowIdx === rowIdx ? 'var(--ip-line-2)' : undefined }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+                    </button>
                     <button className="btn-icon danger" title="Supprimer la ligne" onClick={() => removeRow(secIdx, rowIdx)}>
                       <Icon.trash />
                     </button>
@@ -818,6 +970,107 @@ function SoumissionPage({ state, setState, pushToast, history, undo, future, red
         </div>
       </div>
 
+      {/* Menu flottant ⋯ : options de la ligne — rendu via portal dans <body>
+          car .page.active porte un transform (animation d'entrée) qui casserait
+          position:fixed à l'intérieur de la page. */}
+      {rowMenu && menuRow && ReactDOM.createPortal(
+        <div
+          data-row-menu="1"
+          onMouseDown={(e) => e.stopPropagation()}
+          style={{
+            position: 'fixed',
+            top: Math.min(rowMenu.y + 6, (window.innerHeight || 800) - 348),
+            left: Math.max(12, rowMenu.x - 268),
+            zIndex: 75, width: 268,
+            background: 'rgba(255,255,255,0.96)',
+            backdropFilter: 'saturate(160%) blur(18px)', WebkitBackdropFilter: 'saturate(160%) blur(18px)',
+            border: '1px solid var(--ip-line)', borderRadius: 14,
+            boxShadow: '0 18px 48px rgba(15,15,16,0.22)', overflow: 'hidden',
+          }}
+        >
+          <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--ip-line-2)', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 10.5, fontFamily: 'var(--font-mono)', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--ip-muted)' }}>Options de la ligne</div>
+              <div style={{ fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{menuRow.label || '(sans nom)'}</div>
+            </div>
+            <button onClick={() => setRowMenu(null)} style={{ width: 26, height: 26, display: 'grid', placeItems: 'center', borderRadius: 6, cursor: 'pointer' }}>
+              <Icon.close size={12} />
+            </button>
+          </div>
+
+          {canCompare && (
+            <button
+              onClick={() => {
+                updateRowMeta(rowMenu.secIdx, rowMenu.rowIdx, { hideCompare: !menuRow.hideCompare });
+                pushToast(menuRow.hideCompare ? 'Flèches réactivées sur cette ligne' : 'Flèches masquées sur cette ligne');
+              }}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', padding: '10px 14px', cursor: 'pointer', fontSize: 12.5, borderBottom: '1px solid var(--ip-line-2)' }}
+              onMouseEnter={(e) => e.currentTarget.style.background = 'var(--ip-bg)'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+            >
+              <span style={{ width: 26, height: 26, borderRadius: 7, display: 'grid', placeItems: 'center', background: menuRow.hideCompare ? 'rgba(192,57,43,0.10)' : 'rgba(44,138,74,0.12)', color: menuRow.hideCompare ? '#a03024' : '#1e6b38', fontWeight: 800, fontSize: 11 }}>↑↓</span>
+              <span style={{ flex: 1 }}>Flèches de comparaison</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: menuRow.hideCompare ? '#a03024' : '#1e6b38' }}>{menuRow.hideCompare ? 'Masquées' : 'Affichées'}</span>
+            </button>
+          )}
+
+          <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--ip-line-2)' }}>
+            <div style={{ fontSize: 10.5, fontFamily: 'var(--font-mono)', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--ip-muted)', marginBottom: 7 }}>Texte</div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button
+                onClick={() => updateRowMeta(rowMenu.secIdx, rowMenu.rowIdx, { fmt: { ...menuFmt, b: !menuFmt.b } })}
+                title="Gras"
+                style={{ width: 34, height: 30, borderRadius: 8, border: '1px solid ' + (menuFmt.b ? 'var(--ip-ink)' : 'var(--ip-line)'), background: menuFmt.b ? 'var(--ip-ink)' : '#fff', color: menuFmt.b ? '#fff' : 'var(--ip-ink)', fontWeight: 800, fontSize: 13, cursor: 'pointer' }}
+              >G</button>
+              <button
+                onClick={() => updateRowMeta(rowMenu.secIdx, rowMenu.rowIdx, { fmt: { ...menuFmt, i: !menuFmt.i } })}
+                title="Italique"
+                style={{ width: 34, height: 30, borderRadius: 8, border: '1px solid ' + (menuFmt.i ? 'var(--ip-ink)' : 'var(--ip-line)'), background: menuFmt.i ? 'var(--ip-ink)' : '#fff', color: menuFmt.i ? '#fff' : 'var(--ip-ink)', fontStyle: 'italic', fontFamily: 'var(--font-serif)', fontSize: 14, cursor: 'pointer' }}
+              >I</button>
+            </div>
+          </div>
+
+          <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--ip-line-2)' }}>
+            <div style={{ fontSize: 10.5, fontFamily: 'var(--font-mono)', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--ip-muted)', marginBottom: 7 }}>Couleur du texte</div>
+            <div style={{ display: 'flex', gap: 7 }}>
+              {[[null, 'Par défaut', 'var(--ip-ink)'], ['#F4A51C', 'Orange', '#F4A51C'], ['#c0392b', 'Rouge', '#c0392b'], ['#1e6b38', 'Vert', '#1e6b38'], ['#2f3e7e', 'Bleu', '#2f3e7e']].map(([val, lab, sw]) => {
+                const active = (menuFmt.color || null) === val;
+                return (
+                  <button
+                    key={lab}
+                    onClick={() => updateRowMeta(rowMenu.secIdx, rowMenu.rowIdx, { fmt: { ...menuFmt, color: val } })}
+                    title={lab}
+                    style={{ width: 28, height: 28, borderRadius: '50%', cursor: 'pointer', background: sw, border: active ? '2.5px solid var(--ip-ink)' : '2px solid rgba(15,15,16,0.12)', outline: active ? '2px solid #fff' : 'none', outlineOffset: -4, display: 'grid', placeItems: 'center' }}
+                  >
+                    {val === null && <span style={{ color: '#fff', fontSize: 12, fontWeight: 700 }}>A</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div style={{ padding: '10px 14px' }}>
+            <div style={{ fontSize: 10.5, fontFamily: 'var(--font-mono)', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--ip-muted)', marginBottom: 7 }}>Fond de la ligne</div>
+            <div style={{ display: 'flex', gap: 7 }}>
+              {[[null, 'Aucun', '#ffffff'], ['rgba(244,165,28,0.14)', 'Jaune', '#fbe4b5'], ['rgba(140,155,212,0.16)', 'Bleu', '#dbe1f3'], ['rgba(44,138,74,0.12)', 'Vert', '#d3e8da'], ['rgba(192,57,43,0.09)', 'Rose', '#f3dcd9']].map(([val, lab, sw]) => {
+                const active = (menuFmt.bg || null) === val;
+                return (
+                  <button
+                    key={lab}
+                    onClick={() => updateRowMeta(rowMenu.secIdx, rowMenu.rowIdx, { fmt: { ...menuFmt, bg: val } })}
+                    title={lab}
+                    style={{ width: 28, height: 28, borderRadius: 8, cursor: 'pointer', background: sw, border: active ? '2.5px solid var(--ip-ink)' : '2px solid rgba(15,15,16,0.12)', display: 'grid', placeItems: 'center' }}
+                  >
+                    {val === null && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#c0392b" strokeWidth="2" strokeLinecap="round"><line x1="4" y1="20" x2="20" y2="4"/></svg>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
       {/* Legend */}
       <div style={{ fontSize: 12, color: 'var(--ip-muted)', fontFamily: 'var(--font-mono)', textAlign: 'center', marginBottom: 8 }}>
         NA : non applicable &nbsp;·&nbsp; SD : sur demande &nbsp;·&nbsp; 1x : une fois &nbsp;·&nbsp; 2x : deux fois &nbsp;·&nbsp; Tous les champs sont éditables
@@ -826,4 +1079,4 @@ function SoumissionPage({ state, setState, pushToast, history, undo, future, red
 
 }
 
-Object.assign(window, { SoumissionPage, DEFAULT_SECTIONS, PLAN_DEFS, FREQ_OPTIONS, GUARANTEE_OPTIONS });
+Object.assign(window, { SoumissionPage, DEFAULT_SECTIONS, PLAN_DEFS, FREQ_OPTIONS, GUARANTEE_OPTIONS, freqChangeVs, FREQ_RANK });

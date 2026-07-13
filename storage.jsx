@@ -69,12 +69,43 @@ function makeId() { return 's_' + Date.now().toString(36) + Math.random().toStri
 function makeVersionId() { return 'v_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 4); }
 
 // ---------- Cloud sync helpers ----------
+// dataJSON wrapper (v2) — carries state + comments + archived flag cross-device.
+// Legacy rows store the bare state object; both shapes are understood.
+function unwrapDataJSON(dataJSON) {
+  try {
+    const parsed = JSON.parse(dataJSON);
+    if (parsed && parsed.__v === 2) {
+      return { state: parsed.state || null, comments: Array.isArray(parsed.comments) ? parsed.comments : [], archived: !!parsed.archived };
+    }
+    if (parsed && parsed.__tpl) {
+      return { state: parsed.state || null, comments: null, archived: null };
+    }
+    return { state: parsed, comments: null, archived: null }; // legacy — null = "unknown, keep local"
+  } catch (e) { return { state: null, comments: null, archived: null }; }
+}
+function buildDataWrapper(item) {
+  return JSON.stringify({ __v: 2, state: item.state, comments: item.comments || [], archived: !!item.archived });
+}
+// Fire-and-forget push of one soumission's metadata (comments / archive / statut) to Sheets.
+function pushCloudMeta(item) {
+  try {
+    if (!item || !window.repo || !window.api || !window.api.getUrl()) return;
+    window.repo.Soumissions.save({
+      id: item.id,
+      nom: item.name,
+      statut: item.status || 'en_cours',
+      dateCreation: new Date(item.createdAt || Date.now()).toISOString(),
+      dataJSON: buildDataWrapper(item),
+    }).catch(() => {});
+  } catch (e) {}
+}
+
 // Merge a remote row from Sheets into the local shape.
 // Remote shape: { id, nom, statut, dateCreation, dateModif, dataJSON, ... }
-// Local shape:  { id, name, status, createdAt, updatedAt, state, versions: [] }
+// Local shape:  { id, name, status, createdAt, updatedAt, state, versions: [], comments: [], archived }
 function remoteToLocal(remote) {
-  let state = null;
-  try { state = remote.dataJSON ? JSON.parse(remote.dataJSON) : null; } catch (e) { state = null; }
+  const unwrapped = remote.dataJSON ? unwrapDataJSON(remote.dataJSON) : { state: null, comments: null, archived: null };
+  const state = unwrapped.state;
   if (!state) return null; // can't reconstruct without payload
   return {
     id: remote.id,
@@ -84,6 +115,8 @@ function remoteToLocal(remote) {
     createdAt: remote.dateCreation ? new Date(remote.dateCreation).getTime() : Date.now(),
     updatedAt: remote.dateModif ? new Date(remote.dateModif).getTime() : Date.now(),
     versions: [],
+    comments: unwrapped.comments,   // null = legacy row (keep local)
+    archived: unwrapped.archived,   // null = legacy row (keep local)
     _fromCloud: true,
   };
 }
@@ -106,16 +139,25 @@ async function syncFromCloud() {
   const mergedById = new Map(localById);
 
   for (const r of remoteList) {
+    // Les modèles de soumission voyagent aussi dans l'onglet Soumissions
+    // (statut = 'modele') — ils sont gérés à part, pas dans cette liste.
+    if (String(r.statut || '') === 'modele') continue;
     const local = remoteToLocal(r);
     if (!local || !local.id) continue;
     const existing = mergedById.get(local.id);
     if (!existing) {
       // Cloud-only entry → take it
-      mergedById.set(local.id, local);
+      mergedById.set(local.id, { ...local, comments: local.comments || [], archived: !!local.archived });
     } else {
-      // Conflict: keep newer (versions are local-only, preserve them)
+      // Conflict: keep newer (versions are local-only, preserve them;
+      // comments/archived fall back to local when the remote row is legacy)
       if (local.updatedAt > existing.updatedAt) {
-        mergedById.set(local.id, { ...local, versions: existing.versions || [] });
+        mergedById.set(local.id, {
+          ...local,
+          versions: existing.versions || [],
+          comments: local.comments != null ? local.comments : (existing.comments || []),
+          archived: local.archived != null ? local.archived : !!existing.archived,
+        });
       }
       // else: keep local (it's newer or equal)
     }
@@ -188,7 +230,7 @@ function useSoumissions() {
       all.push({
         id, name: name || `Soumission du ${new Date().toLocaleDateString('fr-CA')}`,
         state, updatedAt: Date.now(), createdAt: Date.now(),
-        status: 'en_cours', versions: [],
+        status: 'en_cours', versions: [], comments: [], archived: false,
       });
     }
     all.sort((a, b) => b.updatedAt - a.updatedAt);
@@ -203,7 +245,7 @@ function useSoumissions() {
     const id = makeId();
     const item = {
       id, name, state, updatedAt: Date.now(), createdAt: Date.now(),
-      status: 'en_cours', versions: [],
+      status: 'en_cours', versions: [], comments: [], archived: false,
     };
     all.push(item);
     all.sort((a, b) => b.updatedAt - a.updatedAt);
@@ -230,6 +272,43 @@ function useSoumissions() {
     const all = loadAll();
     const idx = all.findIndex(x => x.id === id);
     if (idx >= 0) { all[idx].status = status; all[idx].updatedAt = Date.now(); saveAll(all); setList(all); }
+  };
+
+  // ---------- Archivage ----------
+  const setArchived = (id, archived) => {
+    const all = loadAll();
+    const idx = all.findIndex(x => x.id === id);
+    if (idx < 0) return;
+    all[idx].archived = !!archived;
+    all[idx].updatedAt = Date.now();
+    saveAll(all);
+    setList(all);
+    pushCloudMeta(all[idx]);
+  };
+
+  // ---------- Commentaires ----------
+  const addComment = (id, text) => {
+    const t = String(text || '').trim();
+    if (!t) return null;
+    const all = loadAll();
+    const idx = all.findIndex(x => x.id === id);
+    if (idx < 0) return null;
+    const comment = { cid: 'c_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), text: t, at: Date.now() };
+    all[idx].comments = [comment, ...(all[idx].comments || [])];
+    saveAll(all);
+    setList(all);
+    pushCloudMeta(all[idx]);
+    return comment;
+  };
+
+  const removeComment = (id, cid) => {
+    const all = loadAll();
+    const idx = all.findIndex(x => x.id === id);
+    if (idx < 0) return;
+    all[idx].comments = (all[idx].comments || []).filter(c => c.cid !== cid);
+    saveAll(all);
+    setList(all);
+    pushCloudMeta(all[idx]);
   };
 
   const remove = (id) => {
@@ -276,8 +355,38 @@ function useSoumissions() {
   return {
     list, currentId, save, saveAs, load, rename, remove, refresh, setCurrentId,
     setStatus, restoreVersion, deleteVersion,
+    setArchived, addComment, removeComment,
     pullFromCloud, syncing, lastSync,
   };
+}
+
+// ---------- Consultation d'un état (lecture seule, partageable) ----------
+// Construit une URL ?mode=client&data=… pour consulter n'importe quel snapshot
+// (version actuelle ou historique) — utilisable par l'utilisateur ET envoyable au client.
+function buildStatePreviewUrl(state, name) {
+  if (typeof window.encodeStateToUrl !== 'function') return null;
+  const encoded = window.encodeStateToUrl(state, name || '');
+  if (!encoded) return null;
+  return `${location.origin}${location.pathname}?mode=client&data=${encoded}`;
+}
+function copyTextCompat(text, onDone) {
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, text.length);
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    if (ok) { onDone && onDone(); return; }
+  } catch (e) {}
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text).then(() => onDone && onDone(), () => window.prompt('Copiez :', text));
+  } else {
+    window.prompt('Copiez :', text);
+  }
 }
 
 // ---------- Sent links hook ----------
@@ -350,21 +459,32 @@ function SoumissionsModal({ open, onClose, store, currentState, onLoad, pushToas
   const [renaming, setRenaming] = React.useState(null);
   const [statusMenuFor, setStatusMenuFor] = React.useState(null); // id whose menu is open
   const [historyFor, setHistoryFor] = React.useState(null); // item showing history
+  const [commentsFor, setCommentsFor] = React.useState(null); // id showing comments panel
   const [filter, setFilter] = React.useState('all');
   const [showSaveAs, setShowSaveAs] = React.useState(false);
   const [newName, setNewName] = React.useState('');
 
   React.useEffect(() => {
-    if (open) { setRenaming(null); setStatusMenuFor(null); setHistoryFor(null); setShowSaveAs(false); setNewName(''); }
+    if (open) { setRenaming(null); setStatusMenuFor(null); setHistoryFor(null); setCommentsFor(null); setShowSaveAs(false); setNewName(''); }
   }, [open]);
 
   if (!open) return null;
 
   const fmt = (ts) => new Date(ts).toLocaleString('fr-CA', { dateStyle: 'short', timeStyle: 'short' });
-  const filtered = filter === 'all' ? store.list : store.list.filter(it => (it.status || 'en_cours') === filter);
+  const isArch = (it) => !!it.archived;
+  const actives = store.list.filter(it => !isArch(it));
+  const archived = store.list.filter(isArch);
+  const filtered = filter === 'archive'
+    ? archived
+    : filter === 'all'
+      ? actives
+      : actives.filter(it => (it.status || 'en_cours') === filter);
 
-  const counts = { all: store.list.length };
-  STATUSES.forEach(s => { counts[s.id] = store.list.filter(it => (it.status || 'en_cours') === s.id).length; });
+  const counts = { all: actives.length, archive: archived.length };
+  STATUSES.forEach(s => { counts[s.id] = actives.filter(it => (it.status || 'en_cours') === s.id).length; });
+
+  // Item courant du panneau commentaires — relu à chaque rendu pour rester frais
+  const commentsItem = commentsFor ? (store.list.find(x => x.id === commentsFor) || null) : null;
 
   return (
     <div className="modal-bg" onClick={onClose}>
@@ -412,13 +532,13 @@ function SoumissionsModal({ open, onClose, store, currentState, onLoad, pushToas
 
         {/* Status filter tabs */}
         <div style={{ padding: '12px 20px 0', display: 'flex', gap: 6, flexWrap: 'wrap', borderBottom: '1px solid var(--ip-line)' }}>
-          {[{ id: 'all', label: 'Toutes', color: 'var(--ip-ink)' }, ...STATUSES].map(s => {
+          {[{ id: 'all', label: 'Toutes', color: 'var(--ip-ink)' }, ...STATUSES, { id: 'archive', label: 'Archivées', color: 'var(--ip-muted)' }].map(s => {
             const isActive = filter === s.id;
             const count = counts[s.id] || 0;
             return (
               <button
                 key={s.id}
-                onClick={() => setFilter(s.id)}
+                onClick={() => { setFilter(s.id); setCommentsFor(null); }}
                 style={{
                   padding: '8px 13px', fontSize: 12.5, fontWeight: 600,
                   background: isActive ? 'var(--ip-ink)' : 'transparent',
@@ -426,15 +546,19 @@ function SoumissionsModal({ open, onClose, store, currentState, onLoad, pushToas
                   border: 'none', borderBottom: isActive ? '2px solid var(--ip-orange)' : '2px solid transparent',
                   cursor: 'pointer', borderRadius: '6px 6px 0 0',
                   marginBottom: -1,
+                  display: 'inline-flex', alignItems: 'center', gap: 5,
                 }}
               >
-                {s.label} <span style={{ opacity: 0.6, marginLeft: 4 }}>{count}</span>
+                {s.id === 'archive' && (
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+                )}
+                {s.label} <span style={{ opacity: 0.6, marginLeft: 0 }}>{count}</span>
               </button>
             );
           })}
         </div>
 
-        {/* List or history */}
+        {/* List, history or comments */}
         {historyFor ? (
           <VersionHistory
             item={historyFor}
@@ -448,12 +572,22 @@ function SoumissionsModal({ open, onClose, store, currentState, onLoad, pushToas
             pushToast={pushToast}
             fmt={fmt}
           />
+        ) : commentsItem ? (
+          <CommentsPanel
+            item={commentsItem}
+            store={store}
+            onClose={() => setCommentsFor(null)}
+            pushToast={pushToast}
+            fmt={fmt}
+          />
         ) : (
           <div style={{ maxHeight: 440, overflow: 'auto', padding: '6px 12px' }}>
             {filtered.length === 0 && (
               <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--ip-muted)', fontSize: 13.5 }}>
                 {filter === 'all' ? (
                   <span>Aucune soumission enregistrée.<br/>Utilisez <strong>Enregistrer</strong> dans la barre du haut.</span>
+                ) : filter === 'archive' ? (
+                  <span>Aucune soumission archivée.<br/>Archivez les soumissions terminées pour alléger la liste — elles restent consultables ici.</span>
                 ) : (
                   <span>Aucune soumission avec ce statut.</span>
                 )}
@@ -464,13 +598,15 @@ function SoumissionsModal({ open, onClose, store, currentState, onLoad, pushToas
               const isRen = renaming && renaming.id === item.id;
               const status = item.status || 'en_cours';
               const versionCount = (item.versions || []).length;
+              const commentCount = (item.comments || []).length;
               return (
                 <div key={item.id} style={{
                   display: 'flex', alignItems: 'center', gap: 10,
                   padding: '12px 14px', margin: '4px 0',
                   borderRadius: 10,
-                  background: isCurrent ? 'rgba(244,165,28,0.06)' : '#fff',
-                  border: isCurrent ? '1px solid rgba(244,165,28,0.4)' : '1px solid var(--ip-line)',
+                  background: item.archived ? 'rgba(123,123,130,0.05)' : isCurrent ? 'rgba(244,165,28,0.06)' : '#fff',
+                  border: item.archived ? '1px dashed var(--ip-line)' : isCurrent ? '1px solid rgba(244,165,28,0.4)' : '1px solid var(--ip-line)',
+                  opacity: item.archived ? 0.92 : 1,
                   position: 'relative',
                 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -491,6 +627,7 @@ function SoumissionsModal({ open, onClose, store, currentState, onLoad, pushToas
                         <div style={{ fontSize: 14.5, fontWeight: 600, color: 'var(--ip-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 8 }}>
                           {item.name}
                           {isCurrent && <span style={{ fontSize: 10, padding: '2px 7px', background: 'var(--ip-orange)', color: '#fff', borderRadius: 999, fontFamily: 'var(--font-mono)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>en cours</span>}
+                          {item.archived && <span style={{ fontSize: 10, padding: '2px 7px', background: 'var(--ip-muted)', color: '#fff', borderRadius: 999, fontFamily: 'var(--font-mono)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>archivée</span>}
                         </div>
                         <div style={{ fontSize: 11.5, color: 'var(--ip-muted)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                           <span>Modifié : {fmt(item.updatedAt)}</span>
@@ -499,6 +636,19 @@ function SoumissionsModal({ open, onClose, store, currentState, onLoad, pushToas
                               {versionCount} version{versionCount > 1 ? 's' : ''} précédente{versionCount > 1 ? 's' : ''}
                             </button>
                           )}
+                          <button
+                            onClick={() => setCommentsFor(item.id)}
+                            title="Commentaires"
+                            style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 4,
+                              background: 'transparent', border: 'none', cursor: 'pointer', padding: 0,
+                              color: commentCount > 0 ? '#2f3e7e' : 'var(--ip-muted)',
+                              fontSize: 11.5, fontWeight: commentCount > 0 ? 600 : 500,
+                            }}
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                            {commentCount > 0 ? `${commentCount} commentaire${commentCount > 1 ? 's' : ''}` : 'Commenter'}
+                          </button>
                         </div>
                       </div>
                     )}
@@ -544,8 +694,33 @@ function SoumissionsModal({ open, onClose, store, currentState, onLoad, pushToas
                     ) : (
                       <React.Fragment>
                         <button className="btn btn-ghost" onClick={() => onLoad(item)} title="Ouvrir" style={{ padding: '6px 12px', fontSize: 12.5 }}>Ouvrir</button>
+                        <button
+                          onClick={() => {
+                            const url = buildStatePreviewUrl(item.state, item.name);
+                            if (url) window.open(url, '_blank');
+                            else pushToast('Aperçu indisponible');
+                          }}
+                          title="Consulter (lecture seule, comme le client)"
+                          style={{ width: 30, height: 30, border: '1px solid var(--ip-line)', background: '#fff', borderRadius: 6, cursor: 'pointer' }}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        </button>
                         <button onClick={() => setRenaming({ id: item.id, name: item.name })} title="Renommer" style={{ width: 30, height: 30, border: '1px solid var(--ip-line)', background: '#fff', borderRadius: 6, cursor: 'pointer' }}>
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        </button>
+                        <button
+                          onClick={() => {
+                            store.setArchived(item.id, !item.archived);
+                            pushToast(item.archived ? 'Soumission désarchivée' : 'Soumission archivée — voir l\u2019onglet Archivées');
+                          }}
+                          title={item.archived ? 'Désarchiver' : 'Archiver'}
+                          style={{ width: 30, height: 30, border: '1px solid var(--ip-line)', background: item.archived ? 'var(--ip-line-2)' : '#fff', borderRadius: 6, cursor: 'pointer', color: item.archived ? 'var(--ip-ink)' : 'var(--ip-muted)' }}
+                        >
+                          {item.archived ? (
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><polyline points="9 14 12 11 15 14"/><line x1="12" y1="18" x2="12" y2="11"/></svg>
+                          ) : (
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+                          )}
                         </button>
                         <button onClick={() => { if (confirm('Supprimer cette soumission ?')) { store.remove(item.id); pushToast('Supprimée'); } }} title="Supprimer" style={{ width: 30, height: 30, border: '1px solid var(--ip-line)', background: '#fff', borderRadius: 6, cursor: 'pointer', color: '#c53030' }}>
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
@@ -559,7 +734,7 @@ function SoumissionsModal({ open, onClose, store, currentState, onLoad, pushToas
           </div>
         )}
 
-        {!historyFor && (
+        {!historyFor && !commentsItem && (
           <div style={{ padding: '14px 20px', borderTop: '1px solid var(--ip-line)', background: 'var(--ip-bg)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             {showSaveAs ? (
               <React.Fragment>
@@ -595,8 +770,87 @@ function SoumissionsModal({ open, onClose, store, currentState, onLoad, pushToas
   );
 }
 
+// ---------- Panneau de commentaires (toujours consultable) ----------
+function CommentsPanel({ item, store, onClose, pushToast, fmt }) {
+  const [draft, setDraft] = React.useState('');
+  const comments = item.comments || [];
+  const submit = () => {
+    const t = draft.trim();
+    if (!t) return;
+    store.addComment(item.id, t);
+    setDraft('');
+    pushToast('Commentaire ajouté');
+  };
+  return (
+    <div>
+      <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--ip-line)', background: 'var(--ip-bg)', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <button onClick={onClose} style={{ background: 'transparent', border: '1px solid var(--ip-line)', width: 30, height: 30, borderRadius: 6, cursor: 'pointer', display: 'grid', placeItems: 'center' }} title="Retour">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontFamily: 'var(--font-serif)', fontSize: 16, fontWeight: 700 }}>Commentaires : {item.name}</div>
+          <div style={{ fontSize: 11.5, color: 'var(--ip-muted)' }}>{comments.length === 0 ? 'Aucun commentaire pour l\u2019instant' : `${comments.length} commentaire${comments.length > 1 ? 's' : ''} — conservés avec la soumission`}</div>
+        </div>
+      </div>
+      <div style={{ padding: '12px 16px 4px' }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+          <textarea
+            className="txt-input"
+            placeholder="Ajouter une note : suivi d'appel, détail convenu avec le client, rappel…"
+            value={draft}
+            rows={2}
+            autoFocus
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit(); }}
+            style={{ flex: 1, resize: 'vertical', fontSize: 13 }}
+          />
+          <button className="btn btn-orange" onClick={submit} disabled={!draft.trim()} style={{ opacity: draft.trim() ? 1 : 0.5, alignSelf: 'stretch' }}>
+            Ajouter
+          </button>
+        </div>
+        <div style={{ fontSize: 10.5, color: 'var(--ip-muted)', marginTop: 4 }}>Astuce : Ctrl/Cmd + Entrée pour ajouter rapidement.</div>
+      </div>
+      <div style={{ maxHeight: 340, overflow: 'auto', padding: '8px 16px 16px' }}>
+        {comments.length === 0 && (
+          <div style={{ padding: '26px 20px', textAlign: 'center', color: 'var(--ip-muted)', fontSize: 12.5, lineHeight: 1.6 }}>
+            Notez ici tout ce qui concerne cette soumission :<br/>appels, négociations, préférences du client…<br/>Les commentaires restent consultables en tout temps, même après archivage.
+          </div>
+        )}
+        {comments.map(c => (
+          <div key={c.cid} style={{ display: 'flex', gap: 10, padding: '10px 12px', margin: '6px 0', borderRadius: 10, background: '#fff', border: '1px solid var(--ip-line)' }}>
+            <div style={{ width: 26, height: 26, borderRadius: 8, background: 'rgba(140,155,212,0.18)', color: '#2f3e7e', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, color: 'var(--ip-ink)', lineHeight: 1.5, whiteSpace: 'pre-wrap', overflowWrap: 'break-word' }}>{c.text}</div>
+              <div style={{ fontSize: 10.5, color: 'var(--ip-muted)', marginTop: 4, fontFamily: 'var(--font-mono)' }}>{fmt(c.at)}</div>
+            </div>
+            <button
+              onClick={() => { if (confirm('Supprimer ce commentaire ?')) { store.removeComment(item.id, c.cid); pushToast('Commentaire supprimé'); } }}
+              title="Supprimer"
+              style={{ width: 26, height: 26, border: '1px solid var(--ip-line-2)', background: '#fff', borderRadius: 6, cursor: 'pointer', color: '#c53030', flexShrink: 0 }}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/></svg>
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ---------- Version history viewer ----------
 function VersionHistory({ item, store, onClose, onRestore, pushToast, fmt }) {
+  const consult = (state, label) => {
+    const url = buildStatePreviewUrl(state, item.name + (label ? ' — ' + label : ''));
+    if (url) window.open(url, '_blank');
+    else pushToast('Aperçu indisponible');
+  };
+  const copyLink = (state, label) => {
+    const url = buildStatePreviewUrl(state, item.name + (label ? ' — ' + label : ''));
+    if (!url) { pushToast('Lien indisponible'); return; }
+    copyTextCompat(url, () => pushToast('Lien de consultation copié — envoyable au client'));
+  };
   return (
     <div>
       <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--ip-line)', background: 'var(--ip-bg)', display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -605,19 +859,27 @@ function VersionHistory({ item, store, onClose, onRestore, pushToast, fmt }) {
         </button>
         <div style={{ flex: 1 }}>
           <div style={{ fontFamily: 'var(--font-serif)', fontSize: 16, fontWeight: 700 }}>Historique : {item.name}</div>
-          <div style={{ fontSize: 11.5, color: 'var(--ip-muted)' }}>Version actuelle modifiée le {fmt(item.updatedAt)}</div>
+          <div style={{ fontSize: 11.5, color: 'var(--ip-muted)' }}>Version actuelle modifiée le {fmt(item.updatedAt)} · œil = consulter · chaîne = copier le lien client</div>
         </div>
       </div>
       <div style={{ maxHeight: 420, overflow: 'auto', padding: 12 }}>
         {/* Current */}
-        <div style={{ padding: '12px 14px', margin: '4px 0', borderRadius: 10, background: 'rgba(244,165,28,0.08)', border: '1px solid rgba(244,165,28,0.4)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 10, padding: '2px 7px', background: 'var(--ip-orange)', color: '#fff', borderRadius: 999, fontFamily: 'var(--font-mono)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Actuelle</span>
-            <span style={{ fontWeight: 600 }}>{fmt(item.updatedAt)}</span>
+        <div style={{ padding: '12px 14px', margin: '4px 0', borderRadius: 10, background: 'rgba(244,165,28,0.08)', border: '1px solid rgba(244,165,28,0.4)', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 10, padding: '2px 7px', background: 'var(--ip-orange)', color: '#fff', borderRadius: 999, fontFamily: 'var(--font-mono)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Actuelle</span>
+              <span style={{ fontWeight: 600 }}>{fmt(item.updatedAt)}</span>
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--ip-muted)', marginTop: 4 }}>
+              {item.state.sections?.length || 0} sections · {item.state.sections?.reduce((a, s) => a + (s.rows?.length || 0), 0) || 0} lignes · prix {item.state.prices?.[item.state.selectedPlan] || '—'} $
+            </div>
           </div>
-          <div style={{ fontSize: 12, color: 'var(--ip-muted)', marginTop: 4 }}>
-            {item.state.sections?.length || 0} sections · {item.state.sections?.reduce((a, s) => a + (s.rows?.length || 0), 0) || 0} lignes · prix {item.state.prices?.[item.state.selectedPlan] || '—'} $
-          </div>
+          <button onClick={() => consult(item.state, '')} title="Consulter cette version (lecture seule)" style={{ width: 30, height: 30, border: '1px solid rgba(244,165,28,0.5)', background: '#fff', borderRadius: 6, cursor: 'pointer' }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+          <button onClick={() => copyLink(item.state, '')} title="Copier le lien de consultation (à envoyer au client)" style={{ width: 30, height: 30, border: '1px solid rgba(244,165,28,0.5)', background: '#fff', borderRadius: 6, cursor: 'pointer' }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          </button>
         </div>
         {(item.versions || []).length === 0 && (
           <div style={{ padding: '30px 20px', textAlign: 'center', color: 'var(--ip-muted)', fontSize: 13 }}>
@@ -625,13 +887,19 @@ function VersionHistory({ item, store, onClose, onRestore, pushToast, fmt }) {
           </div>
         )}
         {(item.versions || []).map((v, i) => (
-          <div key={v.vid} style={{ padding: '12px 14px', margin: '4px 0', borderRadius: 10, background: '#fff', border: '1px solid var(--ip-line)', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ flex: 1 }}>
+          <div key={v.vid} style={{ padding: '12px 14px', margin: '4px 0', borderRadius: 10, background: '#fff', border: '1px solid var(--ip-line)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 180 }}>
               <div style={{ fontWeight: 600, fontSize: 13.5 }}>{v.label || `Version ${i + 1}`}</div>
               <div style={{ fontSize: 11.5, color: 'var(--ip-muted)', marginTop: 2 }}>
                 {fmt(v.savedAt)} · {v.state.sections?.length || 0} sections · {v.state.sections?.reduce((a, s) => a + (s.rows?.length || 0), 0) || 0} lignes · prix {v.state.prices?.[v.state.selectedPlan] || '—'} $
               </div>
             </div>
+            <button onClick={() => consult(v.state, v.label)} title="Consulter cette version (lecture seule)" style={{ width: 30, height: 30, border: '1px solid var(--ip-line)', background: '#fff', borderRadius: 6, cursor: 'pointer' }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+            <button onClick={() => copyLink(v.state, v.label)} title="Copier le lien de consultation de cette version" style={{ width: 30, height: 30, border: '1px solid var(--ip-line)', background: '#fff', borderRadius: 6, cursor: 'pointer' }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            </button>
             <button className="btn btn-ghost" onClick={() => { if (confirm('Restaurer cette version ? La version actuelle sera sauvegardée dans l\'historique.')) onRestore(v.vid); }} style={{ fontSize: 12.5 }}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
               Restaurer
@@ -768,4 +1036,4 @@ function LinksManagerModal({ open, onClose, sentLinks, pushToast }) {
   );
 }
 
-Object.assign(window, { useSoumissions, SoumissionsModal, StatusBadge, STATUSES, STATUS_BY_ID, useSentLinks, makeLinkId, LinksManagerModal });
+Object.assign(window, { useSoumissions, SoumissionsModal, StatusBadge, STATUSES, STATUS_BY_ID, useSentLinks, makeLinkId, LinksManagerModal, buildStatePreviewUrl, copyTextCompat, unwrapDataJSON, buildDataWrapper });

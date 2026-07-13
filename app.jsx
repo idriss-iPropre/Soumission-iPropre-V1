@@ -266,7 +266,9 @@ function App() {
   // Captured when Enregistrer succeeds; reused by Envoi (no re-upload).
   const [lastPdfUrl, setLastPdfUrl] = React.useState('');
 
-  // ---------- Soumission templates (vendor-side, persisted in localStorage) ----------
+  // ---------- Soumission templates (persisted locally + synchronisés via Google Sheets) ----------
+  // Les modèles voyagent dans l'onglet Soumissions du Sheet avec statut='modele',
+  // donc ils survivent à la fermeture de session et se retrouvent sur tous les appareils.
   const TEMPLATES_KEY = 'ipropre.templates.v1';
   const [templatesList, setTemplatesList] = React.useState(() => {
     if (clientMode) return [];
@@ -280,6 +282,43 @@ function App() {
   const persistTemplates = React.useCallback((next) => {
     try { localStorage.setItem(TEMPLATES_KEY, JSON.stringify(next)); } catch (e) {}
   }, []);
+  // Pull des modèles depuis le cloud au démarrage (mode vendeur seulement).
+  React.useEffect(() => {
+    if (clientMode) return;
+    if (!window.repo || !window.api || !window.api.getUrl()) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const rows = await window.repo.Soumissions.list();
+        if (cancelled || !Array.isArray(rows)) return;
+        const remoteTpls = rows
+          .filter(r => String(r.statut || '') === 'modele')
+          .map(r => {
+            let st = null;
+            try {
+              const parsed = JSON.parse(r.dataJSON || 'null');
+              st = parsed && (parsed.__tpl || parsed.__v === 2) ? parsed.state : parsed;
+            } catch (e) {}
+            if (!st || !st.sections) return null;
+            return {
+              id: r.id,
+              name: r.nom || 'Modèle',
+              createdAt: r.dateCreation || new Date().toISOString(),
+              state: st,
+            };
+          })
+          .filter(Boolean);
+        setTemplatesList(prev => {
+          const byId = new Map(prev.map(t => [t.id, t]));
+          for (const t of remoteTpls) byId.set(t.id, t); // le cloud gagne à id égal
+          const next = Array.from(byId.values()).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+          persistTemplates(next);
+          return next;
+        });
+      } catch (e) { /* hors-ligne : le local suffit */ }
+    })();
+    return () => { cancelled = true; };
+  }, [clientMode, persistTemplates]);
   const templates = React.useMemo(() => clientMode ? null : ({
     list: templatesList,
     save: (snapshot, name) => {
@@ -294,6 +333,16 @@ function App() {
         persistTemplates(next);
         return next;
       });
+      // Push cloud (fire-and-forget) — le modèle survivra à la session / autre appareil
+      if (window.repo && window.api && window.api.getUrl()) {
+        window.repo.Soumissions.save({
+          id: tpl.id,
+          nom: tpl.name,
+          statut: 'modele',
+          dateCreation: tpl.createdAt,
+          dataJSON: JSON.stringify({ __tpl: 1, state: tpl.state }),
+        }).catch(() => {});
+      }
     },
     remove: (id) => {
       setTemplatesList(prev => {
@@ -301,6 +350,9 @@ function App() {
         persistTemplates(next);
         return next;
       });
+      if (window.repo && window.api && window.api.getUrl()) {
+        window.repo.Soumissions.delete(id).catch(() => {});
+      }
     },
   }), [clientMode, templatesList, persistTemplates]);
 
@@ -372,6 +424,13 @@ function App() {
       ? buildSoumissionRecord({ state, form, soumissionName: savedItem.name, status: savedItem.status || 'en_cours', id: savedItem.id })
       : null;
     if (!record) return null;
+    // Enveloppe v2 — transporte aussi commentaires + archivage entre appareils.
+    record.data = {
+      __v: 2,
+      state,
+      comments: (savedItem && savedItem.comments) || [],
+      archived: !!(savedItem && savedItem.archived),
+    };
 
     // Soumissions row (fire-and-forget — local save is the source of truth)
     gsheet.saveSoumission(record);
@@ -862,6 +921,20 @@ function App() {
                 : <React.Fragment>Cochez votre plan préféré et téléchargez le PDF pour le confirmer. Vous pouvez aussi ajouter des services à demander.</React.Fragment>}
               {' '}Pour toute question : <a href="mailto:idriss@ipropre.ca" style={{ color: '#7c5300', textDecoration: 'underline', fontWeight: 600 }}>idriss@ipropre.ca</a>
             </div>
+            <button
+              type="button"
+              onClick={() => { if (typeof window.ipropreReplayGuide === 'function') window.ipropreReplayGuide(); }}
+              title="Revoir le guide d'utilisation"
+              style={{
+                flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 6,
+                padding: '7px 12px', borderRadius: 999, fontSize: 12, fontWeight: 600,
+                background: 'rgba(255,255,255,0.65)', border: '1px solid rgba(244,165,28,0.5)',
+                color: '#7c5300', cursor: 'pointer',
+              }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              Guide
+            </button>
           </div>
         )}
         {tab === 'presentation' && <PresentationPage />}
@@ -890,6 +963,8 @@ function App() {
         <ContactCard />
         {/* Floating contact pill — top-right, slides in on tab change / scroll-to-top */}
         <ContactPill tabKey={tab} />
+        {/* Guide d'accueil client — 4 messages max, une seule fois */}
+        {clientMode && typeof ClientGuide === 'function' && <ClientGuide editable={clientEditable} />}
 
         {/* Sticky action bar (always visible) */}
         <div className="actionbar">
