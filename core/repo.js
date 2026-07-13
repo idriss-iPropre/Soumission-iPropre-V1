@@ -173,5 +173,18 @@
     },
   };
 
-  window.repo = { Soumissions, Versions, Liens, Envois, Activite, Pdfs, Docx, Contacts, ShortLinks, Shortener, uuid, now };
+  // ---------- OCR (carte de visite → texte, via Drive API ocr=true) ----------
+  // Envoie la photo en base64 ; Apps Script la convertit en Google Doc OCR,
+  // lit le texte, supprime le fichier temporaire et renvoie { text }.
+  const Ocr = {
+    async card({ base64, mimeType, lang }) {
+      return api.call('ocr.card', {
+        base64: base64 || '',
+        mimeType: mimeType || 'image/jpeg',
+        lang: lang || 'fr',
+      });
+    },
+  };
+
+  window.repo = { Soumissions, Versions, Liens, Envois, Activite, Pdfs, Docx, Contacts, ShortLinks, Shortener, Ocr, uuid, now };
 })();
